@@ -1,3 +1,5 @@
+pub mod middleware;
+
 use tokio::sync::oneshot;
 
 /// 运行中的 webhook 服务句柄；drop 或 stop 都会触发优雅关闭。
