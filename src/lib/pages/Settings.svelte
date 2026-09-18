@@ -13,9 +13,13 @@
   let error = $state("");
 
   async function load() {
-    const cfg = await api.getConfig();
-    apiKey = cfg.api_key;
-    port = cfg.port;
+    try {
+      const cfg = await api.getConfig();
+      apiKey = cfg.api_key;
+      port = cfg.port;
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   function flash(m: string) {
@@ -65,9 +69,12 @@
   }
 
   const masked = $derived(showKey ? apiKey : apiKey.replace(/./g, "•"));
-  const curl = $derived(
-    `curl -X POST http://<本机IP>:${status?.port ?? port}/send -H "X-API-Key: ${apiKey}" -H "Content-Type: application/json" -d '{"text":"你好"}'`,
-  );
+  function curlWith(key: string) {
+    return `curl -X POST http://<本机IP>:${status?.port ?? port}/send -H "X-API-Key: ${key}" -H "Content-Type: application/json" -d '{"text":"你好"}'`;
+  }
+  // 复制用真实 key；页面展示跟随"显示/隐藏"遮罩
+  const curl = $derived(curlWith(apiKey));
+  const curlDisplay = $derived(curlWith(masked));
 
   onMount(load);
 </script>
@@ -110,7 +117,7 @@
 <section class="mt-4 max-w-2xl rounded-xl border border-slate-200 bg-white p-5">
   <h3 class="font-medium">调用示例</h3>
   <p class="mt-1 text-xs text-slate-500">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（`ipconfig` 查看）。</p>
-  <pre class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">{curl}</pre>
+  <pre class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">{curlDisplay}</pre>
   <button class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={() => copy(curl)}>复制命令</button>
   <table class="mt-4 w-full text-xs">
     <tbody class="text-slate-600">

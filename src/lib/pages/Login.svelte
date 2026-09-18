@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { api, type LoginView, type StatusInfo } from "$lib/api";
 
   let { status, onchange }: { status: StatusInfo | null; onchange: () => void } = $props();
@@ -63,6 +63,24 @@
     onchange();
   }
 
+  // 页面切换回来时恢复后端仍在进行中的登录会话，避免二维码"消失"
+  onMount(async () => {
+    try {
+      const v = await api.loginStatus();
+      if (!v) return;
+      const s = v.status.state;
+      if (s === "wait" || s === "scanned") {
+        view = v;
+        stopPolling();
+        timer = setInterval(poll, 1500);
+      } else if (s === "expired" || s === "error") {
+        view = v;
+      }
+    } catch (e) {
+      error = String(e);
+    }
+  });
+
   onDestroy(stopPolling);
 </script>
 
@@ -85,6 +103,11 @@
     </button>
   </div>
 {:else}
+  {#if status?.token_expired}
+    <div class="mt-6 max-w-md rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+      登录已失效（微信侧 token 过期），请重新扫码登录。
+    </div>
+  {/if}
   <div class="mt-6 max-w-md rounded-xl border border-slate-200 bg-white p-6">
     {#if view}
       <div class="flex flex-col items-center">

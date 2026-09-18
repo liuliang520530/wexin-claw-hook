@@ -19,6 +19,7 @@ export interface StatusInfo {
   server_running: boolean;
   port: number;
   version: string;
+  token_expired: boolean;
 }
 
 export interface Recipient {

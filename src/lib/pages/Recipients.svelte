@@ -10,11 +10,17 @@
   let newName = $state("");
   let message = $state("");
   let error = $state("");
+  let editingId = $state<string | null>(null);
+  let editName = $state("");
 
   async function load() {
-    const cfg = await api.getConfig();
-    recipients = cfg.recipients;
-    defaultRecipient = cfg.default_recipient;
+    try {
+      const cfg = await api.getConfig();
+      recipients = cfg.recipients;
+      defaultRecipient = cfg.default_recipient;
+    } catch (e) {
+      error = String(e);
+    }
   }
 
   async function save() {
@@ -47,6 +53,7 @@
   }
 
   async function remove(id: string) {
+    if (editingId === id) cancelEdit();
     recipients = recipients.filter((r) => r.id !== id);
     if (defaultRecipient === id) defaultRecipient = null;
     await save();
@@ -54,6 +61,26 @@
 
   async function setDefault(id: string | null) {
     defaultRecipient = id;
+    await save();
+  }
+
+  // 备注行内编辑；ID 不可改（需改 ID 请删除后重新添加）
+  function startEdit(r: Recipient) {
+    editingId = r.id;
+    editName = r.name;
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    editName = "";
+  }
+
+  async function saveEdit() {
+    const id = editingId;
+    if (id === null) return;
+    const name = editName.trim() || id;
+    recipients = recipients.map((r) => (r.id === id ? { ...r, name } : r));
+    cancelEdit();
     await save();
   }
 
@@ -90,9 +117,22 @@
           <td class="px-4 py-2.5">
             <input type="radio" name="default" checked={defaultRecipient === r.id} onchange={() => setDefault(r.id)} />
           </td>
-          <td class="px-4 py-2.5">{r.name}</td>
+          <td class="px-4 py-2.5">
+            {#if editingId === r.id}
+              <form class="flex items-center gap-2" onsubmit={(e) => { e.preventDefault(); saveEdit(); }}>
+                <input class="w-40 rounded-md border border-slate-300 px-2 py-1 text-sm" bind:value={editName} />
+                <button type="submit" class="text-xs text-slate-900 hover:underline">保存</button>
+                <button type="button" class="text-xs text-slate-500 hover:underline" onclick={cancelEdit}>取消</button>
+              </form>
+            {:else}
+              {r.name}
+            {/if}
+          </td>
           <td class="px-4 py-2.5 font-mono text-slate-600">{r.id}</td>
           <td class="px-4 py-2.5 text-right">
+            {#if editingId !== r.id}
+              <button class="mr-3 text-xs text-slate-600 hover:underline" onclick={() => startEdit(r)}>编辑</button>
+            {/if}
             <button class="text-xs text-rose-600 hover:underline" onclick={() => remove(r.id)}>删除</button>
           </td>
         </tr>
