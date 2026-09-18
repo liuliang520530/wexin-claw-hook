@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::rejection::JsonRejection;
+use axum::body::Bytes;
 use axum::extract::{DefaultBodyLimit, State};
 use axum::http::StatusCode;
 use axum::routing::{get, post};
@@ -48,10 +48,11 @@ fn bad_request(msg: &str) -> (StatusCode, Json<Value>) {
 
 async fn send(
     State(state): State<Arc<AppState>>,
-    body: Result<Json<SendReq>, JsonRejection>,
+    body: Bytes,
 ) -> (StatusCode, Json<Value>) {
-    let Json(req) = match body {
-        Ok(b) => b,
+    // 不依赖 Content-Type：直接按 JSON 解析原始字节
+    let req: SendReq = match serde_json::from_slice(&body) {
+        Ok(r) => r,
         Err(e) => return bad_request(&format!("invalid JSON body: {e}")),
     };
     let text = match req.text.as_deref().map(str::trim) {
@@ -172,6 +173,22 @@ mod tests {
         let k = state.config.read().await.api_key.clone();
         let (s, v) = post_send(&state, Some(&k), r#"{"text":"hi"}"#).await;
         assert_eq!(s, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(v["code"], "not_logged_in");
+    }
+
+    #[tokio::test]
+    async fn send_accepts_json_body_without_content_type() {
+        let (_d, state) = state_with(None).await;
+        let k = state.config.read().await.api_key.clone();
+        // 故意不带 content-type：body 仍应被解析，走到 not_logged_in 而非 400
+        let req = Request::post("/send")
+            .header("x-api-key", k)
+            .body(Body::from(r#"{"text":"hi"}"#))
+            .unwrap();
+        let r = router(state.clone()).oneshot(req).await.unwrap();
+        assert_eq!(r.status(), StatusCode::SERVICE_UNAVAILABLE);
+        let v: serde_json::Value =
+            serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(v["code"], "not_logged_in");
     }
 

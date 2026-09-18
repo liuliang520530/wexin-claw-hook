@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use axum::extract::{ConnectInfo, Request, State};
 use axum::http::{header, StatusCode};
@@ -55,14 +56,28 @@ pub async fn require_api_key(
     let ip = req
         .extensions()
         .get::<ConnectInfo<SocketAddr>>()
-        .map(|c| c.0.ip().to_string())
-        .unwrap_or_else(|| "unknown".to_string());
-    let _ = state.store.append_log(LogEntry::now(
-        false,
-        Some("unauthorized"),
-        "",
-        &format!("鉴权失败，来源 {ip}"),
-    ));
+        .map(|c| c.0.ip());
+    // 同一来源 60 秒内只记一条鉴权失败日志，避免被扫描/爆破刷满日志
+    let should_log = {
+        let mut recent = state.auth_fail_log.lock().await;
+        let now = Instant::now();
+        match recent.get(&ip) {
+            Some(t) if now.duration_since(*t) < Duration::from_secs(60) => false,
+            _ => {
+                recent.insert(ip, now);
+                true
+            }
+        }
+    };
+    if should_log {
+        let ip = ip.map(|i| i.to_string()).unwrap_or_else(|| "unknown".to_string());
+        let _ = state.store.append_log(LogEntry::now(
+            false,
+            Some("unauthorized"),
+            "",
+            &format!("鉴权失败，来源 {ip}"),
+        ));
+    }
     unauthorized()
 }
 
@@ -150,5 +165,30 @@ mod tests {
         assert!(!key_matches("abc", "abd"));
         assert!(!key_matches("ab", "abc"));
         assert!(!key_matches("", "abc"));
+    }
+
+    async fn wrong_key_from(router: &Router, ip: [u8; 4]) -> StatusCode {
+        let mut req = Request::get("/p").header("x-api-key", "wrong").body(Body::empty()).unwrap();
+        req.extensions_mut().insert(ConnectInfo(SocketAddr::from((ip, 40000))));
+        router.clone().oneshot(req).await.unwrap().status()
+    }
+
+    fn unauthorized_count(state: &AppState) -> usize {
+        state
+            .store
+            .load_logs()
+            .iter()
+            .filter(|l| l.code.as_deref() == Some("unauthorized"))
+            .count()
+    }
+
+    #[tokio::test]
+    async fn auth_failure_log_is_rate_limited_per_ip() {
+        let (_d, state, router) = app();
+        assert_eq!(wrong_key_from(&router, [10, 0, 0, 1]).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(wrong_key_from(&router, [10, 0, 0, 1]).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(unauthorized_count(&state), 1, "同一 IP 60 秒内只记一条");
+        assert_eq!(wrong_key_from(&router, [10, 0, 0, 2]).await, StatusCode::UNAUTHORIZED);
+        assert_eq!(unauthorized_count(&state), 2, "不同 IP 各记一条");
     }
 }

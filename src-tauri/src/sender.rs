@@ -76,6 +76,7 @@ pub async fn send_text(
 
     if matches!(outcome, Err(SendFailure::TokenExpired)) {
         let _ = state.set_credentials(None).await;
+        *state.token_expired.write().await = true;
     }
     outcome
 }
@@ -169,6 +170,7 @@ mod tests {
         assert_eq!(send_text(&state, None, "hi").await, Err(SendFailure::TokenExpired));
         assert!(!state.is_logged_in().await);
         assert!(state.store.load_credentials().is_none());
+        assert!(*state.token_expired.read().await, "应标记 token 已失效");
         assert_eq!(state.store.load_logs()[0].code.as_deref(), Some("token_expired"));
     }
 

@@ -18,6 +18,8 @@ pub struct StatusInfo {
     pub server_running: bool,
     pub port: u16,
     pub version: String,
+    /// 上次发送因 token 过期被登出（需重新扫码）
+    pub token_expired: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,6 +31,7 @@ pub struct LoginView {
 async fn status(state: &AppState) -> StatusInfo {
     let creds = state.creds.read().await.clone();
     let cfg_port = state.config.read().await.port;
+    let token_expired = *state.token_expired.read().await;
     let server = state.server.lock().await;
     StatusInfo {
         logged_in: creds.is_some(),
@@ -37,6 +40,7 @@ async fn status(state: &AppState) -> StatusInfo {
         server_running: server.is_some(),
         port: server.as_ref().map(|h| h.port).unwrap_or(cfg_port),
         version: env!("CARGO_PKG_VERSION").to_string(),
+        token_expired,
     }
 }
 
@@ -46,18 +50,12 @@ pub async fn stop_server(state: &AppState) {
     }
 }
 
-/// 先停旧的再按配置端口启动；刚关闭的端口可能要几百毫秒才释放，所以带重试。
-pub async fn start_server(state: &Arc<AppState>) -> Result<u16, String> {
-    stop_server(state).await;
-    let port = state.config.read().await.port;
+/// 按指定端口尝试绑定；刚关闭的端口可能要几百毫秒才释放，所以带重试。
+async fn bind_with_retry(state: &Arc<AppState>, port: u16) -> Result<server::ServerHandle, String> {
     let mut last = String::new();
     for _ in 0..20 {
         match server::start(state.clone(), port).await {
-            Ok(h) => {
-                let p = h.port;
-                *state.server.lock().await = Some(h);
-                return Ok(p);
-            }
+            Ok(h) => return Ok(h),
             Err(e) => {
                 last = e.to_string();
                 tokio::time::sleep(Duration::from_millis(100)).await;
@@ -65,6 +63,40 @@ pub async fn start_server(state: &Arc<AppState>) -> Result<u16, String> {
         }
     }
     Err(format!("端口 {port} 启动失败：{last}"))
+}
+
+/// 先停旧的再按配置端口启动。
+pub async fn start_server(state: &Arc<AppState>) -> Result<u16, String> {
+    stop_server(state).await;
+    let port = state.config.read().await.port;
+    let h = bind_with_retry(state, port).await?;
+    let p = h.port;
+    *state.server.lock().await = Some(h);
+    Ok(p)
+}
+
+/// 切换端口：先绑定成功再写入配置；绑定失败则恢复原配置端口的服务并返回错误。
+pub async fn apply_port(state: &Arc<AppState>, port: u16) -> Result<u16, String> {
+    if port == 0 {
+        return Err("端口必须在 1-65535 之间".into());
+    }
+    stop_server(state).await;
+    match bind_with_retry(state, port).await {
+        Ok(h) => {
+            let p = h.port;
+            *state.server.lock().await = Some(h);
+            let mut cfg = state.config.write().await;
+            cfg.port = port;
+            state.store.save_config(&cfg).map_err(|e| e.to_string())?;
+            Ok(p)
+        }
+        Err(e) => {
+            if let Err(r) = start_server(state).await {
+                return Err(format!("{e}；恢复原端口失败：{r}"));
+            }
+            Err(e)
+        }
+    }
 }
 
 // ---------- 登录 ----------
@@ -94,7 +126,10 @@ async fn poll_login(state: Arc<AppState>, qrcode: String) {
             }
             Ok(QrStatus::Confirmed(creds)) => {
                 let st = match state.set_credentials(Some(creds)).await {
-                    Ok(()) => LoginStatus::Confirmed,
+                    Ok(()) => {
+                        *state.token_expired.write().await = false;
+                        LoginStatus::Confirmed
+                    }
                     Err(e) => LoginStatus::Error { message: format!("保存凭据失败：{e}") },
                 };
                 set_login_status(&state, &qrcode, st).await;
@@ -133,6 +168,7 @@ pub async fn login_start(state: State<'_, Arc<AppState>>) -> Result<LoginView, S
         svg: svg.clone(),
         status: LoginStatus::Wait,
     });
+    *state.token_expired.write().await = false;
     tokio::spawn(poll_login(state.inner().clone(), qr.qrcode));
     Ok(LoginView { svg, status: LoginStatus::Wait })
 }
@@ -149,6 +185,7 @@ pub async fn login_status(state: State<'_, Arc<AppState>>) -> Result<Option<Logi
 pub async fn logout(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.set_credentials(None).await.map_err(|e| e.to_string())?;
     *state.login.write().await = None;
+    *state.token_expired.write().await = false;
     Ok(())
 }
 
@@ -186,15 +223,7 @@ pub async fn save_recipients(
 
 #[tauri::command]
 pub async fn set_port(state: State<'_, Arc<AppState>>, port: u16) -> Result<StatusInfo, String> {
-    if port == 0 {
-        return Err("端口必须在 1-65535 之间".into());
-    }
-    {
-        let mut cfg = state.config.write().await;
-        cfg.port = port;
-        state.store.save_config(&cfg).map_err(|e| e.to_string())?;
-    }
-    start_server(state.inner()).await?;
+    apply_port(state.inner(), port).await?;
     Ok(status(&state).await)
 }
 
@@ -221,4 +250,27 @@ pub async fn server_stop(state: State<'_, Arc<AppState>>) -> Result<StatusInfo, 
 #[tauri::command]
 pub async fn list_logs(state: State<'_, Arc<AppState>>) -> Result<Vec<LogEntry>, String> {
     Ok(state.store.load_logs())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::Store;
+
+    #[tokio::test]
+    async fn apply_port_keeps_config_and_restores_server_when_bind_fails() {
+        let d = tempfile::tempdir().unwrap();
+        let state = AppState::new(Store::new(d.path().to_path_buf()));
+        state.config.write().await.port = 0;
+        start_server(&state).await.unwrap();
+
+        // 占住一个端口，使新端口绑定必然失败
+        let busy = std::net::TcpListener::bind("0.0.0.0:0").unwrap();
+        let p = busy.local_addr().unwrap().port();
+
+        assert!(apply_port(&state, p).await.is_err());
+        assert_eq!(state.config.read().await.port, 0, "绑定失败不应写入配置");
+        assert!(state.server.lock().await.is_some(), "应恢复原端口的服务");
+        drop(busy);
+    }
 }

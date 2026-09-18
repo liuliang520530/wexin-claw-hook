@@ -1,5 +1,8 @@
+use std::collections::HashMap;
 use std::io;
+use std::net::IpAddr;
 use std::sync::Arc;
+use std::time::Instant;
 
 use serde::Serialize;
 use tokio::sync::{Mutex, RwLock};
@@ -32,6 +35,10 @@ pub struct AppState {
     pub config: RwLock<Config>,
     pub login: RwLock<Option<LoginSession>>,
     pub server: Mutex<Option<ServerHandle>>,
+    /// 各来源 IP 最近一次记录鉴权失败日志的时间，用于限流（None 表示来源未知）。
+    pub auth_fail_log: Mutex<HashMap<Option<IpAddr>, Instant>>,
+    /// 上次发送因微信侧 token 过期（ret=-14）而清除了凭据；重新登录后复位。
+    pub token_expired: RwLock<bool>,
 }
 
 impl AppState {
@@ -45,6 +52,8 @@ impl AppState {
             config: RwLock::new(config),
             login: RwLock::new(None),
             server: Mutex::new(None),
+            auth_fail_log: Mutex::new(HashMap::new()),
+            token_expired: RwLock::new(false),
         })
     }
 
