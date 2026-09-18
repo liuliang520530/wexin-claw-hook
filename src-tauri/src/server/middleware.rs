@@ -36,7 +36,11 @@ pub fn key_matches(provided: &str, expected: &str) -> bool {
 pub fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        Json(serde_json::json!({ "ok": false, "code": "unauthorized" })),
+        Json(serde_json::json!({
+            "ok": false,
+            "code": "unauthorized",
+            "error": "invalid or missing API key"
+        })),
     )
         .into_response()
 }
@@ -146,6 +150,7 @@ mod tests {
         let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(v["ok"], false);
         assert_eq!(v["code"], "unauthorized");
+        assert_eq!(v["error"], "invalid or missing API key");
 
         let mut req = Request::get("/p").header("x-api-key", "wrong").body(Body::empty()).unwrap();
         req.extensions_mut()

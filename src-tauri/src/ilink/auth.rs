@@ -71,12 +71,17 @@ pub async fn poll_qrcode_status(
         "wait" => QrStatus::Wait,
         "scaned" | "scanned" => QrStatus::Scanned,
         "expired" => QrStatus::Expired,
-        "confirmed" => QrStatus::Confirmed(Credentials {
-            bot_token: r.bot_token,
-            ilink_bot_id: r.ilink_bot_id,
-            ilink_user_id: r.ilink_user_id,
-            baseurl: if r.baseurl.is_empty() { base.to_string() } else { r.baseurl },
-        }),
+        "confirmed" => {
+            if r.bot_token.is_empty() {
+                return Err(AuthError::BadResponse("confirmed without bot_token".into()));
+            }
+            QrStatus::Confirmed(Credentials {
+                bot_token: r.bot_token,
+                ilink_bot_id: r.ilink_bot_id,
+                ilink_user_id: r.ilink_user_id,
+                baseurl: if r.baseurl.is_empty() { base.to_string() } else { r.baseurl },
+            })
+        }
         other => QrStatus::Unknown(other.to_string()),
     })
 }
@@ -178,6 +183,22 @@ mod tests {
             QrStatus::Confirmed(c) => assert_eq!(c.baseurl, server.uri()),
             other => panic!("{other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn confirmed_without_bot_token_is_bad_response() {
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "status": "confirmed", "ilink_bot_id": "b", "ilink_user_id": "u"
+            })))
+            .mount(&server)
+            .await;
+        let http = reqwest::Client::new();
+        assert_eq!(
+            poll_qrcode_status(&http, &server.uri(), "q").await,
+            Err(AuthError::BadResponse("confirmed without bot_token".into()))
+        );
     }
 
     #[tokio::test]

@@ -113,10 +113,22 @@ async fn set_login_status(state: &AppState, qrcode: &str, status: LoginStatus) -
     }
 }
 
+/// 当前登录会话是否仍是这个二维码；false 表示已被新的 login_start 替换或已登出。
+async fn is_current_session(state: &AppState, qrcode: &str) -> bool {
+    matches!(state.login.read().await.as_ref(), Some(s) if s.qrcode == qrcode)
+}
+
 async fn poll_login(state: Arc<AppState>, qrcode: String) {
     let mut net_errors = 0u32;
     loop {
-        let next = match auth::poll_qrcode_status(&state.http, DEFAULT_BASE_URL, &qrcode).await {
+        if !is_current_session(&state, &qrcode).await {
+            return;
+        }
+        let polled = auth::poll_qrcode_status(&state.http, DEFAULT_BASE_URL, &qrcode).await;
+        if polled.is_ok() {
+            net_errors = 0;
+        }
+        let next = match polled {
             Ok(QrStatus::Wait) => Some(LoginStatus::Wait),
             Ok(QrStatus::Scanned) => Some(LoginStatus::Scanned),
             Ok(QrStatus::Unknown(_)) => None,
@@ -125,6 +137,10 @@ async fn poll_login(state: Arc<AppState>, qrcode: String) {
                 return;
             }
             Ok(QrStatus::Confirmed(creds)) => {
+                // 长轮询期间会话可能已被替换：不是当前会话就不保存凭据
+                if !is_current_session(&state, &qrcode).await {
+                    return;
+                }
                 let st = match state.set_credentials(Some(creds)).await {
                     Ok(()) => {
                         *state.token_expired.write().await = false;
@@ -169,7 +185,7 @@ pub async fn login_start(state: State<'_, Arc<AppState>>) -> Result<LoginView, S
         status: LoginStatus::Wait,
     });
     *state.token_expired.write().await = false;
-    tokio::spawn(poll_login(state.inner().clone(), qr.qrcode));
+    tauri::async_runtime::spawn(poll_login(state.inner().clone(), qr.qrcode));
     Ok(LoginView { svg, status: LoginStatus::Wait })
 }
 
