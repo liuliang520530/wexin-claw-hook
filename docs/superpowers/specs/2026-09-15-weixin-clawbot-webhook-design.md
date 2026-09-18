@@ -22,6 +22,7 @@
 - **认证**：扫码获得 `bot_token`，业务请求带头 `Authorization: Bearer <token>`、`AuthorizationType: ilink_bot_token`、`X-WECHAT-UIN`（随机 uint32 → 十进制字符串 → base64）、`iLink-App-Id: bot`、`iLink-App-ClientVersion`（版本号编码为整数，如 2.4.6 → 0x00020406）
 - **登录流程**：`GET /ilink/bot/get_bot_qrcode?bot_type=3` 获取二维码 → 轮询 `GET /ilink/bot/get_qrcode_status?qrcode=...`（状态：wait / scaned / confirmed / expired）→ confirmed 时返回 `bot_token`、`ilink_bot_id`、`ilink_user_id`、`baseurl`（后续请求用 baseurl，可能非默认域名）
 - **发消息**：`POST {baseurl}/ilink/bot/sendmessage`，body 含 `msg`（`from_user_id` 填 botId、`to_user_id`、`client_id` 唯一值、`message_type: 2`、`message_state: 2`、`item_list`、`context_token` 可选）与 `base_info`（`channel_version`）
+- **附加字段**：`base_info.bot_agent`（客户端标识，如 `weixin-clawbot-webhook/0.1.0`）为参考实现 wxclawbot-cli 携带的附加字段，服务端宽容，非协议必需
 - **无好友列表接口**：收件人 ID（`xxx@im.wechat`）只能来自被动收到的消息或事先录入
 - **错误码**：`ret=-2` 限频（约 7 条/5 分钟，服务端硬限制）、`ret=-14` token 失效（有效期数天到数周，不保证永久）
 - **协议风险**：服务端行为随版本演进，`context_token` 是否必需在不同实现中表现不一（yao 强制、wxclawbot-cli 可省略）；本项目将其作为可选参数透传，实测为准
@@ -120,7 +121,7 @@ UI 点"扫码登录" → command login_start → auth.rs 取二维码 → 生成
 
 ## 7. 存储
 
-位置：`%APPDATA%\weixin-clawbot-webhook\`（Tauri app data 目录，跨平台由 Tauri 解析）
+位置：`%APPDATA%\com.liuli.weixin-clawbot-webhook\`（Tauri app_data_dir 使用 identifier，跨平台由 Tauri 解析）
 
 | 文件 | 内容 |
 |---|---|
