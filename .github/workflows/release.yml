@@ -1,0 +1,61 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 校验 tag 与 tauri.conf.json 版本一致
+        shell: pwsh
+        run: |
+          $v = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          if ("v$v" -ne "${{ github.ref_name }}") {
+            Write-Error "tag ${{ github.ref_name }} 与 tauri.conf.json 版本 v$v 不一致"
+            exit 1
+          }
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: 构建并发布安装包
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "weixin-clawbot-webhook v__VERSION__"
+          releaseBody: "附件说明：`*-setup.exe` 为安装包；`*-portable.exe` 为免安装单文件（依赖系统自带 WebView2）。未签名，SmartScreen 提示时选「更多信息 → 仍要运行」。"
+          releaseDraft: false
+          prerelease: false
+
+      - name: 准备便携 exe
+        shell: pwsh
+        run: Copy-Item src-tauri/target/release/weixin-clawbot-webhook.exe "weixin-clawbot-webhook-${{ github.ref_name }}-portable.exe"
+
+      - name: 上传便携 exe 到同一 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: weixin-clawbot-webhook-*-portable.exe

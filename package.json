@@ -1,7 +1,7 @@
 {
   "name": "weixin-clawbot-webhook",
   "version": "0.1.0",
-  "description": "",
+  "description": "微信 ClawBot Webhook 工具",
   "type": "module",
   "scripts": {
     "dev": "vite dev",
