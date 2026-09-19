@@ -33,7 +33,11 @@
     targetId ? logs.filter((l) => l.to === targetId).slice().reverse() : [],
   );
 
-  const canSend = $derived(!!status?.logged_in && !!targetId && text.trim().length > 0 && !sending);
+  const targetValid = $derived(targetId.endsWith("@im.wechat") && targetId !== "@im.wechat");
+
+  const canSend = $derived(
+    !!status?.logged_in && !!targetId && targetValid && text.trim().length > 0 && !sending,
+  );
 
   async function loadRecipients() {
     try {
@@ -118,9 +122,12 @@
     {#if selected === MANUAL}
       <input
         class="w-72 rounded-md border border-slate-300 px-3 py-1.5 font-mono text-sm"
-        placeholder="xxx@im.wechat"
+        placeholder="o9cq8…@im.wechat（iLink 用户 ID，不是微信号）"
         bind:value={manualId}
       />
+      {#if manualId.trim() && !targetValid}
+        <span class="text-xs text-rose-600">不是 iLink 用户 ID：需以 @im.wechat 结尾，微信号/wxid 不可用</span>
+      {/if}
     {/if}
   </div>
 

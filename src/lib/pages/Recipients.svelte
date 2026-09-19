@@ -42,6 +42,10 @@
       error = "请输入收件人 ID";
       return;
     }
+    if (!id.endsWith("@im.wechat") || id === "@im.wechat") {
+      error = "这不是 iLink 用户 ID。ID 形如 o9cq8…@im.wechat（不是微信号/wxid），只能从对方发给机器人的消息中获得。";
+      return;
+    }
     if (recipients.some((r) => r.id === id)) {
       error = "该 ID 已存在";
       return;
@@ -144,7 +148,7 @@
 <form class="mt-4 flex max-w-2xl items-end gap-3" onsubmit={(e) => { e.preventDefault(); add(); }}>
   <label class="flex-1 text-xs text-slate-500">
     收件人 ID
-    <input class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 font-mono text-sm" placeholder="xxx@im.wechat" bind:value={newId} />
+    <input class="mt-1 w-full rounded-md border border-slate-300 px-3 py-1.5 font-mono text-sm" placeholder="o9cq8…@im.wechat（iLink 用户 ID，不是微信号）" bind:value={newId} />
   </label>
   <label class="w-40 text-xs text-slate-500">
     备注

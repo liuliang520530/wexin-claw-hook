@@ -5,6 +5,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::ilink::auth::{self, AuthError, QrStatus};
+use crate::ilink::types::is_ilink_user_id;
 use crate::ilink::DEFAULT_BASE_URL;
 use crate::server;
 use crate::state::{AppState, LoginSession, LoginStatus};
@@ -223,12 +224,19 @@ pub async fn save_recipients(
     recipients: Vec<Recipient>,
     default_recipient: Option<String>,
 ) -> Result<Config, String> {
-    let mut cfg = state.config.write().await;
-    cfg.recipients = recipients
+    let recipients: Vec<Recipient> = recipients
         .into_iter()
         .map(|r| Recipient { id: r.id.trim().to_string(), name: r.name.trim().to_string() })
         .filter(|r| !r.id.is_empty())
         .collect();
+    if let Some(bad) = recipients.iter().find(|r| !is_ilink_user_id(&r.id)) {
+        return Err(format!(
+            "收件人 ID「{}」不是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid；该 ID 只能从对方发给机器人的消息中获得",
+            bad.id
+        ));
+    }
+    let mut cfg = state.config.write().await;
+    cfg.recipients = recipients;
     let known: Vec<String> = cfg.recipients.iter().map(|r| r.id.clone()).collect();
     cfg.default_recipient = default_recipient
         .map(|s| s.trim().to_string())
@@ -275,6 +283,9 @@ pub async fn send_test(
     to: String,
     text: String,
 ) -> Result<String, String> {
+    if !is_ilink_user_id(to.trim()) {
+        return Err("收件人 ID 必须是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid".into());
+    }
     crate::sender::send_text(&state, Some(&to), &text)
         .await
         .map_err(|f| f.message())

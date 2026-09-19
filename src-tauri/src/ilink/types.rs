@@ -2,6 +2,11 @@ use serde::{Deserialize, Serialize};
 
 use super::{CHANNEL_VERSION, ILINK_APP_ID};
 
+/// iLink 用户 ID 形如 `o9cq8…@im.wechat`（微信 OpenID + 固定后缀），不是微信号/wxid。
+pub fn is_ilink_user_id(s: &str) -> bool {
+    s.strip_suffix("@im.wechat").is_some_and(|prefix| !prefix.is_empty())
+}
+
 /// 扫码登录后拿到并持久化的凭据。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Credentials {
@@ -167,6 +172,15 @@ pub struct QrStatusResponse {
 mod tests {
     use super::*;
     use base64::Engine;
+
+    #[test]
+    fn ilink_user_id_format() {
+        assert!(is_ilink_user_id("o9cq80abc@im.wechat"));
+        assert!(!is_ilink_user_id("liuliangzheng"));
+        assert!(!is_ilink_user_id("wxid_abc"));
+        assert!(!is_ilink_user_id("@im.wechat"));
+        assert!(!is_ilink_user_id("8a73@im.bot"));
+    }
 
     #[test]
     fn client_version_encodes_like_official_package() {

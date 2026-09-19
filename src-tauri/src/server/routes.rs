@@ -9,6 +9,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use super::middleware::require_api_key;
+use crate::ilink::types::is_ilink_user_id;
 use crate::sender::{send_text, SendFailure};
 use crate::state::AppState;
 
@@ -59,6 +60,11 @@ async fn send(
         Some(t) if !t.is_empty() => t.to_string(),
         _ => return bad_request("text is required"),
     };
+    if let Some(to) = req.to.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        if !is_ilink_user_id(to) {
+            return bad_request("to 必须是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid");
+        }
+    }
     match send_text(&state, req.to.as_deref(), &text).await {
         Ok(to) => (StatusCode::OK, Json(json!({ "ok": true, "to": to }))),
         Err(f) => (
@@ -165,6 +171,16 @@ mod tests {
         let (s, v) = post_send(&state, Some(&k), "not json").await;
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert_eq!(v["code"], "bad_request");
+    }
+
+    #[tokio::test]
+    async fn rejects_non_ilink_recipient_id() {
+        let (_d, state) = state_with(None).await;
+        let k = state.config.read().await.api_key.clone();
+        let (s, v) = post_send(&state, Some(&k), r#"{"to":"liuliangzheng","text":"hi"}"#).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["code"], "bad_request");
+        assert!(v["error"].as_str().unwrap().contains("im.wechat"));
     }
 
     #[tokio::test]
