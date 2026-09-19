@@ -268,6 +268,18 @@ pub async fn list_logs(state: State<'_, Arc<AppState>>) -> Result<Vec<LogEntry>,
     Ok(state.store.load_logs())
 }
 
+/// 发消息页用：直接走 sender（不经 webhook/鉴权），日志与 webhook 发送完全一致。
+#[tauri::command]
+pub async fn send_test(
+    state: State<'_, Arc<AppState>>,
+    to: String,
+    text: String,
+) -> Result<String, String> {
+    crate::sender::send_text(&state, Some(&to), &text)
+        .await
+        .map_err(|f| f.message())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -2,11 +2,12 @@
   import { onMount } from "svelte";
   import { api, type StatusInfo } from "$lib/api";
   import Login from "$lib/pages/Login.svelte";
+  import Chat from "$lib/pages/Chat.svelte";
   import Recipients from "$lib/pages/Recipients.svelte";
   import Settings from "$lib/pages/Settings.svelte";
   import Logs from "$lib/pages/Logs.svelte";
 
-  type Page = "login" | "recipients" | "settings" | "logs";
+  type Page = "login" | "chat" | "recipients" | "settings" | "logs";
   let page = $state<Page>("login");
   let status = $state<StatusInfo | null>(null);
 
@@ -26,6 +27,7 @@
 
   const nav: { id: Page; label: string }[] = [
     { id: "login", label: "登录" },
+    { id: "chat", label: "发消息" },
     { id: "recipients", label: "收件人" },
     { id: "settings", label: "设置" },
     { id: "logs", label: "日志" },
@@ -65,6 +67,8 @@
   <main class="flex-1 overflow-auto p-8">
     {#if page === "login"}
       <Login {status} onchange={refresh} />
+    {:else if page === "chat"}
+      <Chat {status} />
     {:else if page === "recipients"}
       <Recipients {status} />
     {:else if page === "settings"}
