@@ -24,7 +24,7 @@
 - **发消息**：`POST {baseurl}/ilink/bot/sendmessage`，body 含 `msg`（`from_user_id` 填 botId、`to_user_id`、`client_id` 唯一值、`message_type: 2`、`message_state: 2`、`item_list`、`context_token` 可选）与 `base_info`（`channel_version`）
 - **附加字段**：`base_info.bot_agent`（客户端标识，如 `weixin-clawbot-webhook/0.1.0`）为参考实现 wxclawbot-cli 携带的附加字段，服务端宽容，非协议必需
 - **无好友列表接口**：收件人 ID（`xxx@im.wechat`）只能来自被动收到的消息或事先录入
-- **错误码**：`ret=-2` 限频（约 7 条/5 分钟，服务端硬限制）、`ret=-14` token 失效（有效期数天到数周，不保证永久）
+- **错误码**：`ret=-2` 微信侧拒绝——实测两种含义：与该用户尚无活跃会话（对方从未给机器人发过消息）时主动推送被拒；或频率限制（约 7 条/5 分钟，服务端硬限制）。`ret=-14` token 失效（有效期数天到数周，不保证永久）
 - **协议风险**：服务端行为随版本演进，`context_token` 是否必需在不同实现中表现不一（yao 强制、wxclawbot-cli 可省略）；本项目将其作为可选参数透传，实测为准
 
 ## 3. 需求（已与用户确认）
@@ -107,13 +107,13 @@ UI 点"扫码登录" → command login_start → auth.rs 取二维码 → 生成
 | 缺 text / JSON 非法 | 400 | `bad_request` |
 | key 错误 | 401 | `unauthorized` |
 | 未登录 | 503 | `not_logged_in` |
-| iLink ret=-2 | 429 | `rate_limited` |
+| iLink ret=-2 | 429 | `rate_limited`（error 文案同时说明「无会话」与「限频」两种原因） |
 | iLink ret=-14 | 503 | `token_expired`（同时本地标记失效，UI 提示重新扫码） |
 | 上游其他错误 / 网络异常 / 超时 | 502 | `upstream_error` |
 
 **设计决策：**
 
-- 限频**不排队重试**，直接 429——CI 场景要快速明确的失败，重试策略留给调用方
+- ret=-2 **不排队重试**，直接 429——CI 场景要快速明确的失败，重试策略留给调用方；首次推送前需对方先给机器人发消息建立会话（实测结论，见 §2）
 - v1 只支持文本；`ilink/client.rs` 预留泛化的 `send_items` 入口，媒体（CDN 上传 + AES-128-ECB）以后加不破坏 API
 - 上游调用超时 15s；请求体上限 1MB
 - **发送日志**：每次调用记录时间/收件人/文本前 200 字/结果/错误码，环形保留 500 条

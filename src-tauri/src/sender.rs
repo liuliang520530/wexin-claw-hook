@@ -24,7 +24,7 @@ impl SendFailure {
         match self {
             SendFailure::NotLoggedIn => "尚未扫码登录".to_string(),
             SendFailure::TokenExpired => "登录已失效，请重新扫码".to_string(),
-            SendFailure::RateLimited => "触发频率限制（约 7 条/5 分钟），稍后重试".to_string(),
+            SendFailure::RateLimited => "微信侧拒绝发送（ret=-2）：若是首次给该用户推送，需对方先在微信里给机器人发一条消息建立会话；否则为频率限制（约 7 条/5 分钟），稍后重试".to_string(),
             SendFailure::Upstream(m) => m.clone(),
         }
     }

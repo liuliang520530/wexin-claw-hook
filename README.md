@@ -39,7 +39,7 @@ curl -X POST http://<本机IP>:9720/send \
 | 200 | — | 已发送 |
 | 400 | `bad_request` | 缺 `text` 或 JSON 非法 |
 | 401 | `unauthorized` | API key 错误 |
-| 429 | `rate_limited` | 微信侧频率限制（约 7 条/5 分钟），稍后重试 |
+| 429 | `rate_limited` | 微信侧拒绝（ret=-2）：首次给某人推送前，需对方先在微信里给机器人发过一条消息建立会话；否则是频率限制（约 7 条/5 分钟），稍后重试 |
 | 503 | `not_logged_in` / `token_expired` | 未登录或登录失效，回应用重新扫码 |
 | 502 | `upstream_error` | 微信服务端或网络错误，body 里有原始信息 |
 
@@ -62,5 +62,6 @@ cd src-tauri && cargo test   # 先在根目录 pnpm build 一次
 ## 说明与限制
 
 - 只做「主动发送」，不接收消息；只支持文本。
+- 首次给某个收件人推送前，对方必须先在微信里给机器人发过一条消息（建立会话），否则微信返回 `ret=-2`；会话可能过期，过期后需对方再发一条。
 - bot_token 有效期数天到数周，失效后 `/send` 返回 503 `token_expired`，重新扫码即可。
 - 协议为腾讯官方 iLink Bot API（`ilinkai.weixin.qq.com`），非逆向；协议演进可能导致失效。
