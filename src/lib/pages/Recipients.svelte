@@ -132,7 +132,7 @@
               {r.name}
             {/if}
           </td>
-          <td class="px-4 py-2.5 font-mono text-slate-600">{r.id}</td>
+          <td class="px-4 py-2.5 font-mono text-slate-600">{r.id}{#if !r.id.endsWith("@im.wechat")}<span class="ml-2 rounded bg-rose-100 px-1.5 py-0.5 font-sans text-xs text-rose-700">ID 无效（不是 iLink 用户 ID），请删除</span>{/if}</td>
           <td class="px-4 py-2.5 text-right">
             {#if editingId !== r.id}
               <button class="mr-3 text-xs text-slate-600 hover:underline" onclick={() => startEdit(r)}>编辑</button>

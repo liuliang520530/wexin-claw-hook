@@ -229,13 +229,8 @@ pub async fn save_recipients(
         .map(|r| Recipient { id: r.id.trim().to_string(), name: r.name.trim().to_string() })
         .filter(|r| !r.id.is_empty())
         .collect();
-    if let Some(bad) = recipients.iter().find(|r| !is_ilink_user_id(&r.id)) {
-        return Err(format!(
-            "收件人 ID「{}」不是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid；该 ID 只能从对方发给机器人的消息中获得",
-            bad.id
-        ));
-    }
     let mut cfg = state.config.write().await;
+    validate_new_recipients(&cfg.recipients, &recipients)?;
     cfg.recipients = recipients;
     let known: Vec<String> = cfg.recipients.iter().map(|r| r.id.clone()).collect();
     cfg.default_recipient = default_recipient
@@ -291,8 +286,36 @@ pub async fn send_test(
         .map_err(|f| f.message())
 }
 
+/// 只校验新增的收件人 ID；已存在的记录（含历史上录入的无效 ID）允许保留或删除，
+/// 避免一条无效记录卡住整个列表的保存。
+pub fn validate_new_recipients(existing: &[Recipient], incoming: &[Recipient]) -> Result<(), String> {
+    let is_new = |r: &Recipient| !existing.iter().any(|e| e.id == r.id);
+    if let Some(bad) = incoming.iter().filter(|r| is_new(r)).find(|r| !is_ilink_user_id(&r.id)) {
+        return Err(format!(
+            "收件人 ID「{}」不是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid；该 ID 只能从对方发给机器人的消息中获得",
+            bad.id
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn recipient_validation_only_applies_to_new_ids() {
+        use crate::store::Recipient;
+        let r = |id: &str| Recipient { id: id.into(), name: id.into() };
+        let old_bad = vec![r("liuliangzheng")];
+        // 旧的无效记录：保留可以，删除也可以
+        assert!(super::validate_new_recipients(&old_bad, &old_bad).is_ok());
+        assert!(super::validate_new_recipients(&old_bad, &[]).is_ok());
+        // 新增合法 ID 可以
+        assert!(super::validate_new_recipients(&old_bad, &[r("liuliangzheng"), r("o9cq8abc@im.wechat")]).is_ok());
+        // 新增微信号被拒
+        let err = super::validate_new_recipients(&[], &[r("wxid_abc")]).unwrap_err();
+        assert!(err.contains("wxid_abc") && err.contains("im.wechat"));
+    }
+
     use super::*;
     use crate::store::Store;
 
