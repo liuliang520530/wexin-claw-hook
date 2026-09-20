@@ -1,0 +1,7 @@
+# 防御性配置：强制忽略外部环境传入的 CC/CXX。
+# 历史问题：全局环境变量曾指向 MSYS2 MinGW 的 gcc/g++，导致 vswhom-sys 用 g++ 编译、
+# 产生 GCC 专有符号（__gxx_personality_seh0），MSVC link.exe 无法解析（LNK2001/LNK1120）。
+# cc crate 会忽略空值并自动探测 MSVC cl.exe，因此这里强制置空是安全的。
+[env]
+CC = { value = "", force = true }
+CXX = { value = "", force = true }
