@@ -1,8 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { api, type LogEntry } from "$lib/api";
+  import { api, type AccountView, type LogEntry } from "$lib/api";
 
   let logs = $state<LogEntry[]>([]);
+  let accounts = $state<AccountView[]>([]);
+
+  const nameOf = (id: string) => accounts.find((a) => a.user_id === id)?.name ?? id;
 
   async function refresh() {
     try {
@@ -13,6 +16,7 @@
   }
 
   onMount(() => {
+    api.listAccounts().then((a) => (accounts = a)).catch(console.error);
     refresh();
     const t = setInterval(refresh, 3000);
     return () => clearInterval(t);
@@ -22,7 +26,7 @@
 <div class="flex items-center justify-between">
   <div>
     <h2 class="text-lg font-semibold">日志</h2>
-    <p class="mt-1 text-sm text-slate-500">最近 500 条 webhook 调用与鉴权记录，每 3 秒自动刷新。</p>
+    <p class="mt-1 text-sm text-slate-500">最近 500 条发送与鉴权记录，每 3 秒自动刷新。</p>
   </div>
   <button class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={refresh}>刷新</button>
 </div>
@@ -36,6 +40,7 @@
         <tr>
           <th class="px-4 py-2.5">时间</th>
           <th class="px-4 py-2.5">结果</th>
+          <th class="px-4 py-2.5">发送账号</th>
           <th class="px-4 py-2.5">收件人</th>
           <th class="px-4 py-2.5">内容</th>
         </tr>
@@ -51,7 +56,8 @@
                 <span class="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-700">{l.code ?? "失败"}</span>
               {/if}
             </td>
-            <td class="px-4 py-2 font-mono text-xs text-slate-600">{l.to || "-"}</td>
+            <td class="px-4 py-2 text-xs text-slate-600" title={l.from}>{l.from ? nameOf(l.from) : "-"}</td>
+            <td class="px-4 py-2 text-xs text-slate-600" title={l.to}>{l.to ? nameOf(l.to) : "-"}</td>
             <td class="px-4 py-2 break-all text-slate-700">{l.text}</td>
           </tr>
         {/each}

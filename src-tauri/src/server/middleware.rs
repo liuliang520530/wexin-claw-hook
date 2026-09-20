@@ -79,6 +79,7 @@ pub async fn require_api_key(
             false,
             Some("unauthorized"),
             "",
+            "",
             &format!("鉴权失败，来源 {ip}"),
         ));
     }

@@ -13,8 +13,8 @@
 
 ## 使用
 
-1. **登录**：打开应用 → 登录页 → 扫码登录 → 手机微信确认。
-2. **收件人**（可选）：默认发给扫码的账号。收件人 ID 是 **iLink 用户 ID**（形如 `o9cq8…@im.wechat`），**不是微信号也不是 wxid**，填微信号会被微信返回 `ret=-3 invalid arguments`。iLink 没有好友列表或按微信号查询的接口，别人的 ID 只能从他发给机器人的消息（`getupdates` 的 `from_user_id`）中获得——当前版本不接收消息，因此实际上只能发给扫码账号自己；给第三方发送需要后续版本加入消息接收。备注可在列表中直接编辑；收件人 ID 如需更改，请删除后重新添加。
+1. **账号**：打开应用 → 账号页 → 获取二维码 → 用要接入的微信扫码并确认。每扫一次码接入一个账号，可接入多个；同一账号重复扫码即刷新登录。接入后请用该微信给机器人发一条任意消息（建立会话），否则微信会以 `ret=-2` 拒绝推送。
+2. **收件人就是已接入的账号**：消息发给某个账号时，用的是该账号自己扫码得到的 bot 凭据。收件人 ID 是 iLink 用户 ID（形如 `o9cq8…@im.wechat`），不是微信号/wxid，填微信号会得到 `ret=-3`。iLink 没有好友列表接口，未接入者的 ID 只能从他发给机器人的消息中获得，而当前版本不接收消息。「发消息」页可分别选择“发送账号”与“收件人”做交叉测试（用 A 的机器人发给 B）。
 3. **设置**：查看/复制 API key，按需改端口（默认 9720）。
 4. **调用**：
 
@@ -22,7 +22,7 @@
 curl -X POST http://<本机IP>:9720/send \
   -H "X-API-Key: <你的key>" \
   -H "Content-Type: application/json" \
-  -d '{"text":"部署完成 ✅","to":"可选，收件人ID"}'
+  -d '{"text":"部署完成 ✅","to":"可选，已接入账号的 ID"}'
 ```
 
 也可以用 `Authorization: Bearer <key>`。
@@ -31,7 +31,7 @@ curl -X POST http://<本机IP>:9720/send \
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `POST /send` | `{"text": "...", "to": "可选"}` | 发文本消息，需鉴权 |
+| `POST /send` | `{"text": "...", "to": "可选"}` | 发文本消息，需鉴权。`to` 缺省 = 默认账号发给自己；`to` 是已接入账号则用它自己的凭据发给它；否则用默认账号的凭据发给 `to` |
 | `GET /health` | — | `{"ok":true,"logged_in":bool,"version":"..."}`，不鉴权 |
 
 | HTTP | code | 含义 |
@@ -47,7 +47,7 @@ curl -X POST http://<本机IP>:9720/send \
 
 ## 数据目录
 
-`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`credentials.json`（登录凭据，明文，请勿外传）、`config.json`（端口/API key/收件人）、`logs.json`（最近 500 条）。
+`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`accounts.json`（各账号的登录凭据，明文，请勿外传；v1 的 `credentials.json` 首次启动时自动迁移）、`config.json`（端口/API key/收件人）、`logs.json`（最近 500 条）。
 
 ## 开发
 

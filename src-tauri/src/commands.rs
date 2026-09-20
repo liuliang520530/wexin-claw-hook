@@ -9,18 +9,27 @@ use crate::ilink::types::is_ilink_user_id;
 use crate::ilink::DEFAULT_BASE_URL;
 use crate::server;
 use crate::state::{AppState, LoginSession, LoginStatus};
-use crate::store::{Config, LogEntry, Recipient};
+use crate::store::{Config, LogEntry};
 
 #[derive(Debug, Clone, Serialize)]
 pub struct StatusInfo {
+    /// 至少有一个凭据有效的账号
     pub logged_in: bool,
-    pub bot_id: Option<String>,
-    pub user_id: Option<String>,
+    pub account_count: usize,
+    pub expired_count: usize,
+    pub default_user_id: Option<String>,
     pub server_running: bool,
     pub port: u16,
     pub version: String,
-    /// 上次发送因 token 过期被登出（需重新扫码）
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AccountView {
+    pub name: String,
+    pub user_id: String,
+    pub bot_id: String,
     pub token_expired: bool,
+    pub is_default: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -29,19 +38,39 @@ pub struct LoginView {
     pub status: LoginStatus,
 }
 
+async fn account_views(state: &AppState) -> Vec<AccountView> {
+    let default = state.default_account().await.map(|a| a.user_id().to_string());
+    state
+        .accounts
+        .read()
+        .await
+        .iter()
+        .map(|a| AccountView {
+            name: a.name.clone(),
+            user_id: a.user_id().to_string(),
+            bot_id: a.creds.ilink_bot_id.clone(),
+            token_expired: a.token_expired,
+            is_default: default.as_deref() == Some(a.user_id()),
+        })
+        .collect()
+}
+
 async fn status(state: &AppState) -> StatusInfo {
-    let creds = state.creds.read().await.clone();
+    let default_user_id = state.default_account().await.map(|a| a.user_id().to_string());
+    let (account_count, expired_count) = {
+        let accounts = state.accounts.read().await;
+        (accounts.len(), accounts.iter().filter(|a| a.token_expired).count())
+    };
     let cfg_port = state.config.read().await.port;
-    let token_expired = *state.token_expired.read().await;
     let server = state.server.lock().await;
     StatusInfo {
-        logged_in: creds.is_some(),
-        bot_id: creds.as_ref().map(|c| c.ilink_bot_id.clone()),
-        user_id: creds.as_ref().map(|c| c.ilink_user_id.clone()),
+        logged_in: account_count > expired_count,
+        account_count,
+        expired_count,
+        default_user_id,
         server_running: server.is_some(),
         port: server.as_ref().map(|h| h.port).unwrap_or(cfg_port),
         version: env!("CARGO_PKG_VERSION").to_string(),
-        token_expired,
     }
 }
 
@@ -114,7 +143,7 @@ async fn set_login_status(state: &AppState, qrcode: &str, status: LoginStatus) -
     }
 }
 
-/// 当前登录会话是否仍是这个二维码；false 表示已被新的 login_start 替换或已登出。
+/// 当前登录会话是否仍是这个二维码；false 表示已被新的 login_start 替换。
 async fn is_current_session(state: &AppState, qrcode: &str) -> bool {
     matches!(state.login.read().await.as_ref(), Some(s) if s.qrcode == qrcode)
 }
@@ -142,11 +171,9 @@ async fn poll_login(state: Arc<AppState>, qrcode: String) {
                 if !is_current_session(&state, &qrcode).await {
                     return;
                 }
-                let st = match state.set_credentials(Some(creds)).await {
-                    Ok(()) => {
-                        *state.token_expired.write().await = false;
-                        LoginStatus::Confirmed
-                    }
+                let user_id = creds.ilink_user_id.clone();
+                let st = match state.upsert_account(creds).await {
+                    Ok(refreshed) => LoginStatus::Confirmed { user_id, refreshed },
                     Err(e) => LoginStatus::Error { message: format!("保存凭据失败：{e}") },
                 };
                 set_login_status(&state, &qrcode, st).await;
@@ -185,7 +212,6 @@ pub async fn login_start(state: State<'_, Arc<AppState>>) -> Result<LoginView, S
         svg: svg.clone(),
         status: LoginStatus::Wait,
     });
-    *state.token_expired.write().await = false;
     tauri::async_runtime::spawn(poll_login(state.inner().clone(), qr.qrcode));
     Ok(LoginView { svg, status: LoginStatus::Wait })
 }
@@ -198,12 +224,52 @@ pub async fn login_status(state: State<'_, Arc<AppState>>) -> Result<Option<Logi
     }))
 }
 
+// ---------- 账号 ----------
+
 #[tauri::command]
-pub async fn logout(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    state.set_credentials(None).await.map_err(|e| e.to_string())?;
-    *state.login.write().await = None;
-    *state.token_expired.write().await = false;
-    Ok(())
+pub async fn list_accounts(state: State<'_, Arc<AppState>>) -> Result<Vec<AccountView>, String> {
+    Ok(account_views(&state).await)
+}
+
+#[tauri::command]
+pub async fn rename_account(
+    state: State<'_, Arc<AppState>>,
+    user_id: String,
+    name: String,
+) -> Result<Vec<AccountView>, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err("备注不能为空".into());
+    }
+    if !state.rename_account(&user_id, name).await.map_err(|e| e.to_string())? {
+        return Err("账号不存在".into());
+    }
+    Ok(account_views(&state).await)
+}
+
+#[tauri::command]
+pub async fn remove_account(
+    state: State<'_, Arc<AppState>>,
+    user_id: String,
+) -> Result<Vec<AccountView>, String> {
+    state.remove_account(&user_id).await.map_err(|e| e.to_string())?;
+    Ok(account_views(&state).await)
+}
+
+#[tauri::command]
+pub async fn set_default_account(
+    state: State<'_, Arc<AppState>>,
+    user_id: String,
+) -> Result<Vec<AccountView>, String> {
+    if state.find_account(&user_id).await.is_none() {
+        return Err("账号不存在".into());
+    }
+    {
+        let mut cfg = state.config.write().await;
+        cfg.default_account = Some(user_id);
+        state.store.save_config(&cfg).map_err(|e| e.to_string())?;
+    }
+    Ok(account_views(&state).await)
 }
 
 // ---------- 状态 / 配置 ----------
@@ -216,28 +282,6 @@ pub async fn get_status(state: State<'_, Arc<AppState>>) -> Result<StatusInfo, S
 #[tauri::command]
 pub async fn get_config(state: State<'_, Arc<AppState>>) -> Result<Config, String> {
     Ok(state.config.read().await.clone())
-}
-
-#[tauri::command]
-pub async fn save_recipients(
-    state: State<'_, Arc<AppState>>,
-    recipients: Vec<Recipient>,
-    default_recipient: Option<String>,
-) -> Result<Config, String> {
-    let recipients: Vec<Recipient> = recipients
-        .into_iter()
-        .map(|r| Recipient { id: r.id.trim().to_string(), name: r.name.trim().to_string() })
-        .filter(|r| !r.id.is_empty())
-        .collect();
-    let mut cfg = state.config.write().await;
-    validate_new_recipients(&cfg.recipients, &recipients)?;
-    cfg.recipients = recipients;
-    let known: Vec<String> = cfg.recipients.iter().map(|r| r.id.clone()).collect();
-    cfg.default_recipient = default_recipient
-        .map(|s| s.trim().to_string())
-        .filter(|s| !s.is_empty() && known.contains(s));
-    state.store.save_config(&cfg).map_err(|e| e.to_string())?;
-    Ok(cfg.clone())
 }
 
 #[tauri::command]
@@ -271,51 +315,28 @@ pub async fn list_logs(state: State<'_, Arc<AppState>>) -> Result<Vec<LogEntry>,
     Ok(state.store.load_logs())
 }
 
-/// 发消息页用：直接走 sender（不经 webhook/鉴权），日志与 webhook 发送完全一致。
+/// 发消息页：用指定账号（from）的凭据给任意 ID（to）发，不经 webhook/鉴权；日志与 webhook 一致。
 #[tauri::command]
 pub async fn send_test(
     state: State<'_, Arc<AppState>>,
+    from: String,
     to: String,
     text: String,
 ) -> Result<String, String> {
-    if !is_ilink_user_id(to.trim()) {
+    let to = to.trim();
+    if !is_ilink_user_id(to) {
         return Err("收件人 ID 必须是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid".into());
     }
-    crate::sender::send_text(&state, Some(&to), &text)
+    let Some(account) = state.find_account(from.trim()).await else {
+        return Err("发送账号不存在，请先扫码登录".into());
+    };
+    crate::sender::send_with_account(&state, &account, to, &text)
         .await
         .map_err(|f| f.message())
 }
 
-/// 只校验新增的收件人 ID；已存在的记录（含历史上录入的无效 ID）允许保留或删除，
-/// 避免一条无效记录卡住整个列表的保存。
-pub fn validate_new_recipients(existing: &[Recipient], incoming: &[Recipient]) -> Result<(), String> {
-    let is_new = |r: &Recipient| !existing.iter().any(|e| e.id == r.id);
-    if let Some(bad) = incoming.iter().filter(|r| is_new(r)).find(|r| !is_ilink_user_id(&r.id)) {
-        return Err(format!(
-            "收件人 ID「{}」不是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid；该 ID 只能从对方发给机器人的消息中获得",
-            bad.id
-        ));
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn recipient_validation_only_applies_to_new_ids() {
-        use crate::store::Recipient;
-        let r = |id: &str| Recipient { id: id.into(), name: id.into() };
-        let old_bad = vec![r("liuliangzheng")];
-        // 旧的无效记录：保留可以，删除也可以
-        assert!(super::validate_new_recipients(&old_bad, &old_bad).is_ok());
-        assert!(super::validate_new_recipients(&old_bad, &[]).is_ok());
-        // 新增合法 ID 可以
-        assert!(super::validate_new_recipients(&old_bad, &[r("liuliangzheng"), r("o9cq8abc@im.wechat")]).is_ok());
-        // 新增微信号被拒
-        let err = super::validate_new_recipients(&[], &[r("wxid_abc")]).unwrap_err();
-        assert!(err.contains("wxid_abc") && err.contains("im.wechat"));
-    }
-
     use super::*;
     use crate::store::Store;
 

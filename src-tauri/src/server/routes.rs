@@ -78,6 +78,7 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Value> {
     Json(json!({
         "ok": true,
         "logged_in": state.is_logged_in().await,
+        "accounts": state.accounts.read().await.len(),
         "version": env!("CARGO_PKG_VERSION"),
     }))
 }
@@ -99,12 +100,12 @@ mod tests {
         let state = AppState::new(Store::new(d.path().to_path_buf()));
         if let Some(b) = base {
             state
-                .set_credentials(Some(Credentials {
+                .upsert_account(Credentials {
                     bot_token: "t".into(),
                     ilink_bot_id: "bot@im.bot".into(),
                     ilink_user_id: "me@im.wechat".into(),
                     baseurl: b.into(),
-                }))
+                })
                 .await
                 .unwrap();
         }
@@ -147,6 +148,7 @@ mod tests {
             serde_json::from_slice(&r.into_body().collect().await.unwrap().to_bytes()).unwrap();
         assert_eq!(v["ok"], true);
         assert_eq!(v["logged_in"], false);
+        assert_eq!(v["accounts"], 0);
         assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
     }
 

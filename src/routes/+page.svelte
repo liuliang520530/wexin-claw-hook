@@ -3,11 +3,10 @@
   import { api, type StatusInfo } from "$lib/api";
   import Login from "$lib/pages/Login.svelte";
   import Chat from "$lib/pages/Chat.svelte";
-  import Recipients from "$lib/pages/Recipients.svelte";
   import Settings from "$lib/pages/Settings.svelte";
   import Logs from "$lib/pages/Logs.svelte";
 
-  type Page = "login" | "chat" | "recipients" | "settings" | "logs";
+  type Page = "login" | "chat" | "settings" | "logs";
   let page = $state<Page>("login");
   let status = $state<StatusInfo | null>(null);
 
@@ -26,9 +25,8 @@
   });
 
   const nav: { id: Page; label: string }[] = [
-    { id: "login", label: "登录" },
+    { id: "login", label: "账号" },
     { id: "chat", label: "发消息" },
-    { id: "recipients", label: "收件人" },
     { id: "settings", label: "设置" },
     { id: "logs", label: "日志" },
   ];
@@ -55,7 +53,11 @@
     <div class="space-y-1.5 border-t border-slate-800 px-5 py-4 text-xs">
       <div class="flex items-center gap-2">
         <span class="h-2 w-2 rounded-full {status?.logged_in ? 'bg-emerald-400' : 'bg-rose-400'}"></span>
-        {status?.logged_in ? "已登录" : "未登录"}
+        {#if status?.account_count}
+          {status.account_count} 个账号{status.expired_count ? `（${status.expired_count} 个已失效）` : ""}
+        {:else}
+          未登录
+        {/if}
       </div>
       <div class="flex items-center gap-2">
         <span class="h-2 w-2 rounded-full {status?.server_running ? 'bg-emerald-400' : 'bg-slate-500'}"></span>
@@ -69,8 +71,6 @@
       <Login {status} onchange={refresh} />
     {:else if page === "chat"}
       <Chat {status} />
-    {:else if page === "recipients"}
-      <Recipients {status} />
     {:else if page === "settings"}
       <Settings {status} onchange={refresh} />
     {:else}
