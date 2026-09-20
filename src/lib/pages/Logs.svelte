@@ -40,8 +40,7 @@
         <tr>
           <th class="px-4 py-2.5">时间</th>
           <th class="px-4 py-2.5">结果</th>
-          <th class="px-4 py-2.5">发送账号</th>
-          <th class="px-4 py-2.5">收件人</th>
+          <th class="px-4 py-2.5">账号</th>
           <th class="px-4 py-2.5">内容</th>
         </tr>
       </thead>
@@ -56,7 +55,6 @@
                 <span class="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-700">{l.code ?? "失败"}</span>
               {/if}
             </td>
-            <td class="px-4 py-2 text-xs text-slate-600" title={l.from}>{l.from ? nameOf(l.from) : "-"}</td>
             <td class="px-4 py-2 text-xs text-slate-600" title={l.to}>{l.to ? nameOf(l.to) : "-"}</td>
             <td class="px-4 py-2 break-all text-slate-700">{l.text}</td>
           </tr>

@@ -122,7 +122,7 @@
   <table class="mt-4 w-full text-xs">
     <tbody class="text-slate-600">
       <tr><td class="py-1 pr-3 font-mono">200</td><td>已发送</td></tr>
-      <tr><td class="py-1 pr-3 font-mono">400</td><td>缺 text 或 JSON 非法</td></tr>
+      <tr><td class="py-1 pr-3 font-mono">400</td><td>缺 text / JSON 非法 / 收件人 ID 格式错误或未接入（unknown_recipient）</td></tr>
       <tr><td class="py-1 pr-3 font-mono">401</td><td>API key 错误</td></tr>
       <tr><td class="py-1 pr-3 font-mono">429</td><td>微信侧拒绝：对方尚未与机器人对话（请先让对方在微信里给机器人发一条消息），或触发频率限制（约 7 条/5 分钟）</td></tr>
       <tr><td class="py-1 pr-3 font-mono">503</td><td>未登录 / 登录已失效（重新扫码）</td></tr>

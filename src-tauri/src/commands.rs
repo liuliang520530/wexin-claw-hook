@@ -5,7 +5,6 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::ilink::auth::{self, AuthError, QrStatus};
-use crate::ilink::types::is_ilink_user_id;
 use crate::ilink::DEFAULT_BASE_URL;
 use crate::server;
 use crate::state::{AppState, LoginSession, LoginStatus};
@@ -315,22 +314,17 @@ pub async fn list_logs(state: State<'_, Arc<AppState>>) -> Result<Vec<LogEntry>,
     Ok(state.store.load_logs())
 }
 
-/// 发消息页：用指定账号（from）的凭据给任意 ID（to）发，不经 webhook/鉴权；日志与 webhook 一致。
+/// 发消息页：用账号自己的凭据发给它自己，不经 webhook/鉴权；日志与 webhook 一致。
 #[tauri::command]
 pub async fn send_test(
     state: State<'_, Arc<AppState>>,
-    from: String,
-    to: String,
+    user_id: String,
     text: String,
 ) -> Result<String, String> {
-    let to = to.trim();
-    if !is_ilink_user_id(to) {
-        return Err("收件人 ID 必须是 iLink 用户 ID（形如 xxx@im.wechat），不是微信号/wxid".into());
-    }
-    let Some(account) = state.find_account(from.trim()).await else {
-        return Err("发送账号不存在，请先扫码登录".into());
+    let Some(account) = state.find_account(user_id.trim()).await else {
+        return Err("账号不存在，请先扫码接入".into());
     };
-    crate::sender::send_with_account(&state, &account, to, &text)
+    crate::sender::send_as(&state, &account, &text)
         .await
         .map_err(|f| f.message())
 }

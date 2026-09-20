@@ -5,6 +5,8 @@ use crate::store::{Account, LogEntry};
 #[derive(Debug, Clone, PartialEq)]
 pub enum SendFailure {
     NotLoggedIn,
+    /// `to` 不是已接入账号的 ID。实测：微信对跨账号发送返回成功但对方收不到，所以直接拒绝。
+    UnknownRecipient(String),
     TokenExpired,
     RateLimited,
     Upstream(String),
@@ -14,6 +16,7 @@ impl SendFailure {
     pub fn code(&self) -> &'static str {
         match self {
             SendFailure::NotLoggedIn => "not_logged_in",
+            SendFailure::UnknownRecipient(_) => "unknown_recipient",
             SendFailure::TokenExpired => "token_expired",
             SendFailure::RateLimited => "rate_limited",
             SendFailure::Upstream(_) => "upstream_error",
@@ -22,16 +25,18 @@ impl SendFailure {
 
     pub fn message(&self) -> String {
         match self {
-            SendFailure::NotLoggedIn => "尚未扫码登录任何账号".to_string(),
+            SendFailure::NotLoggedIn => "尚未扫码接入任何账号".to_string(),
+            SendFailure::UnknownRecipient(id) => format!(
+                "收件人 {id} 未接入：消息只能发给已用微信扫码接入的账号，请让对方先扫码"
+            ),
             SendFailure::TokenExpired => "该账号登录已失效，请重新扫码".to_string(),
-            SendFailure::RateLimited => "微信侧拒绝发送（ret=-2）：若是首次给该用户推送，需对方先在微信里给机器人发一条消息建立会话；否则为频率限制（约 7 条/5 分钟），稍后重试".to_string(),
+            SendFailure::RateLimited => "微信侧拒绝发送（ret=-2）：若是该账号接入后首次推送，需先用该微信给机器人发一条消息激活；否则为频率限制（约 7 条/5 分钟），稍后重试".to_string(),
             SendFailure::Upstream(m) => m.clone(),
         }
     }
 }
 
-/// webhook 入口。收件人 `to` 缺省 = 默认账号自己；`to` 是某个已登录账号时用它自己的凭据，
-/// 否则用默认账号的凭据发给 `to`。
+/// webhook 入口。`to` 缺省 = 默认账号；`to` 必须是已接入账号的 ID，由该账号自己的凭据发给自己。
 pub async fn send_text(
     state: &AppState,
     to: Option<&str>,
@@ -39,49 +44,46 @@ pub async fn send_text(
 ) -> Result<String, SendFailure> {
     let to = to.map(str::trim).filter(|s| !s.is_empty()).map(str::to_string);
     let account = match &to {
-        Some(t) => match state.find_account(t).await {
-            Some(a) => Some(a),
-            None => state.default_account().await,
-        },
+        Some(t) => state.find_account(t).await,
         None => state.default_account().await,
     };
-    let Some(account) = account else {
-        let _ = state.store.append_log(LogEntry::now(
-            false,
-            Some(SendFailure::NotLoggedIn.code()),
-            "",
-            to.as_deref().unwrap_or(""),
-            text,
-        ));
-        return Err(SendFailure::NotLoggedIn);
-    };
-    let to = to.unwrap_or_else(|| account.user_id().to_string());
-    send_with_account(state, &account, &to, text).await
+    match account {
+        Some(a) => send_as(state, &a, text).await,
+        None => {
+            let has_accounts = !state.accounts.read().await.is_empty();
+            let failure = match &to {
+                Some(t) if has_accounts => SendFailure::UnknownRecipient(t.clone()),
+                _ => SendFailure::NotLoggedIn,
+            };
+            let _ = state.store.append_log(LogEntry::now(
+                false,
+                Some(failure.code()),
+                "",
+                to.as_deref().unwrap_or(""),
+                text,
+            ));
+            Err(failure)
+        }
+    }
 }
 
-/// 用指定账号的凭据给任意 ID 发；发消息页的交叉测试也走这里。
-/// 每次调用都写日志；ret=-14 时标记该账号失效（账号保留）。
-pub async fn send_with_account(
-    state: &AppState,
-    account: &Account,
-    to: &str,
-    text: &str,
-) -> Result<String, SendFailure> {
-    let from = account.user_id().to_string();
+/// 用账号自己的凭据发给它自己（发消息页也走这里）。每次调用都写日志；ret=-14 时标记该账号失效（账号保留）。
+pub async fn send_as(state: &AppState, account: &Account, text: &str) -> Result<String, SendFailure> {
+    let user_id = account.user_id().to_string();
     if account.token_expired {
         let _ = state.store.append_log(LogEntry::now(
             false,
             Some(SendFailure::TokenExpired.code()),
-            &from,
-            to,
+            &user_id,
+            &user_id,
             text,
         ));
         return Err(SendFailure::TokenExpired);
     }
 
     let client = IlinkClient::new(state.http.clone(), account.creds.clone());
-    let outcome = match client.send_text(to, text, None).await {
-        Ok(_) => Ok(to.to_string()),
+    let outcome = match client.send_text(&user_id, text, None).await {
+        Ok(_) => Ok(user_id.clone()),
         Err(SendError::RateLimited) => Err(SendFailure::RateLimited),
         Err(SendError::TokenExpired) => Err(SendFailure::TokenExpired),
         Err(SendError::Upstream(m)) => Err(SendFailure::Upstream(m)),
@@ -90,13 +92,13 @@ pub async fn send_with_account(
     let _ = state.store.append_log(LogEntry::now(
         outcome.is_ok(),
         outcome.as_ref().err().map(SendFailure::code),
-        &from,
-        to,
+        &user_id,
+        &user_id,
         text,
     ));
 
     if matches!(outcome, Err(SendFailure::TokenExpired)) {
-        let _ = state.mark_expired(&from).await;
+        let _ = state.mark_expired(&user_id).await;
     }
     outcome
 }
@@ -142,6 +144,8 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let state = AppState::new(Store::new(d.path().to_path_buf()));
         assert_eq!(send_text(&state, None, "hi").await, Err(SendFailure::NotLoggedIn));
+        // 没有任何账号时，即使指定了 to 也是"未登录"而不是"未接入"
+        assert_eq!(send_text(&state, Some("x@im.wechat"), "hi").await, Err(SendFailure::NotLoggedIn));
         let logs = state.store.load_logs();
         assert_eq!(logs[0].code.as_deref(), Some("not_logged_in"));
         assert!(!logs[0].ok);
@@ -183,7 +187,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn config_default_account_and_unknown_to_use_default_creds() {
+    async fn config_default_account_used_when_no_to() {
         let server = MockServer::start().await;
         ok_mock()
             .and(header("Authorization", "Bearer tok-b@im.wechat"))
@@ -192,36 +196,25 @@ mod tests {
             .expect(2)
             .mount(&server)
             .await;
-        ok_mock()
-            .and(header("Authorization", "Bearer tok-b@im.wechat"))
-            .and(body_partial_json(serde_json::json!({"msg": {"to_user_id": "x@im.wechat"}})))
-            .respond_with(ok_resp())
-            .expect(1)
-            .mount(&server)
-            .await;
         let (_d, state) = state_with(&server.uri(), &["a@im.wechat", "b@im.wechat"]).await;
         state.config.write().await.default_account = Some("b@im.wechat".into());
         assert_eq!(send_text(&state, None, "1").await.unwrap(), "b@im.wechat");
         assert_eq!(send_text(&state, Some("  "), "2").await.unwrap(), "b@im.wechat");
-        // 不是已登录账号的 ID：用默认账号（b）的凭据发给它
-        assert_eq!(send_text(&state, Some("x@im.wechat"), "3").await.unwrap(), "x@im.wechat");
     }
 
     #[tokio::test]
-    async fn cross_send_with_explicit_account() {
+    async fn unknown_to_is_rejected_without_calling_upstream() {
         let server = MockServer::start().await;
-        ok_mock()
-            .and(header("Authorization", "Bearer tok-a@im.wechat"))
-            .and(body_partial_json(serde_json::json!({"msg": {"to_user_id": "b@im.wechat"}})))
-            .respond_with(ok_resp())
-            .expect(1)
-            .mount(&server)
-            .await;
-        let (_d, state) = state_with(&server.uri(), &["a@im.wechat", "b@im.wechat"]).await;
-        let a = state.find_account("a@im.wechat").await.unwrap();
-        assert_eq!(send_with_account(&state, &a, "b@im.wechat", "x").await.unwrap(), "b@im.wechat");
+        ok_mock().respond_with(ok_resp()).expect(0).mount(&server).await;
+        let (_d, state) = state_with(&server.uri(), &["a@im.wechat"]).await;
+        assert_eq!(
+            send_text(&state, Some("x@im.wechat"), "hi").await,
+            Err(SendFailure::UnknownRecipient("x@im.wechat".into()))
+        );
         let l = &state.store.load_logs()[0];
-        assert_eq!((l.from.as_str(), l.to.as_str()), ("a@im.wechat", "b@im.wechat"));
+        assert_eq!(l.code.as_deref(), Some("unknown_recipient"));
+        assert_eq!((l.from.as_str(), l.to.as_str()), ("", "x@im.wechat"));
+        assert!(SendFailure::UnknownRecipient("x@im.wechat".into()).message().contains("x@im.wechat"));
     }
 
     #[tokio::test]
@@ -270,6 +263,7 @@ mod tests {
     #[test]
     fn codes_are_stable() {
         assert_eq!(SendFailure::NotLoggedIn.code(), "not_logged_in");
+        assert_eq!(SendFailure::UnknownRecipient("x".into()).code(), "unknown_recipient");
         assert_eq!(SendFailure::TokenExpired.code(), "token_expired");
         assert_eq!(SendFailure::RateLimited.code(), "rate_limited");
         assert_eq!(SendFailure::Upstream("x".into()).code(), "upstream_error");

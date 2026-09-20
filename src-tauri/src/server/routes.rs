@@ -23,6 +23,7 @@ pub struct SendReq {
 
 pub fn failure_status(f: &SendFailure) -> StatusCode {
     match f {
+        SendFailure::UnknownRecipient(_) => StatusCode::BAD_REQUEST,
         SendFailure::NotLoggedIn | SendFailure::TokenExpired => StatusCode::SERVICE_UNAVAILABLE,
         SendFailure::RateLimited => StatusCode::TOO_MANY_REQUESTS,
         SendFailure::Upstream(_) => StatusCode::BAD_GATEWAY,
@@ -183,6 +184,18 @@ mod tests {
         assert_eq!(s, StatusCode::BAD_REQUEST);
         assert_eq!(v["code"], "bad_request");
         assert!(v["error"].as_str().unwrap().contains("im.wechat"));
+    }
+
+    #[tokio::test]
+    async fn unknown_recipient_is_400() {
+        let m = mock_ret(0).await;
+        let (_d, state) = state_with(Some(&m.uri())).await;
+        let k = state.config.read().await.api_key.clone();
+        let (s, v) = post_send(&state, Some(&k), r#"{"to":"other@im.wechat","text":"hi"}"#).await;
+        assert_eq!(s, StatusCode::BAD_REQUEST);
+        assert_eq!(v["ok"], false);
+        assert_eq!(v["code"], "unknown_recipient");
+        assert!(v["error"].as_str().unwrap().contains("other@im.wechat"));
     }
 
     #[tokio::test]
