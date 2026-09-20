@@ -70,7 +70,8 @@
 
   const masked = $derived(showKey ? apiKey : apiKey.replace(/./g, "•"));
   function curlWith(key: string) {
-    return `curl -X POST http://<本机IP>:${status?.port ?? port}/send -H "X-API-Key: ${key}" -H "Content-Type: application/json" -d '{"text":"你好"}'`;
+    const to = status?.default_user_id ?? "<账号ID>";
+    return `curl -X POST http://<本机IP>:${status?.port ?? port}/send -H "X-API-Key: ${key}" -d '{"to":"${to}","text":"你好"}'`;
   }
   // 复制用真实 key；页面展示跟随"显示/隐藏"遮罩
   const curl = $derived(curlWith(apiKey));
@@ -116,7 +117,7 @@
 
 <section class="mt-4 max-w-2xl rounded-xl border border-slate-200 bg-white p-5">
   <h3 class="font-medium">调用示例</h3>
-  <p class="mt-1 text-xs text-slate-500">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（`ipconfig` 查看）。</p>
+  <p class="mt-1 text-xs text-slate-500">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（ipconfig 查看）。to 是账号 ID，示例已填默认账号，可换成任一已接入账号（账号页可复制）；省略 to 即发给默认账号。无需 Content-Type 头。</p>
   <pre class="mt-3 overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100">{curlDisplay}</pre>
   <button class="mt-2 rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={() => copy(curl)}>复制命令</button>
   <table class="mt-4 w-full text-xs">
