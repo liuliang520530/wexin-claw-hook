@@ -21,9 +21,10 @@
 ```bash
 curl -X POST http://<本机IP>:9720/send \
   -H "X-API-Key: <你的key>" \
-  -H "Content-Type: application/json" \
-  -d '{"text":"部署完成 ✅","to":"可选，已接入账号的 ID"}'
+  -d '{"to":"<账号ID>","text":"部署完成 ✅"}'
 ```
+
+`to` 是已接入账号的 ID（账号页可复制），省略则发给默认账号；不需要 Content-Type 头。设置页会生成填好 key 和默认账号的完整命令。
 
 也可以用 `Authorization: Bearer <key>`。
 

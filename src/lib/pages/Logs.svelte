@@ -4,12 +4,28 @@
 
   let logs = $state<LogEntry[]>([]);
   let accounts = $state<AccountView[]>([]);
+  let confirmClear = $state(false);
 
   const nameOf = (id: string) => accounts.find((a) => a.user_id === id)?.name ?? id;
 
   async function refresh() {
     try {
       logs = await api.listLogs();
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function clearAll() {
+    if (!confirmClear) {
+      confirmClear = true;
+      setTimeout(() => (confirmClear = false), 3000);
+      return;
+    }
+    confirmClear = false;
+    try {
+      await api.clearLogs();
+      await refresh();
     } catch (e) {
       console.error(e);
     }
@@ -28,7 +44,16 @@
     <h2 class="text-lg font-semibold">日志</h2>
     <p class="mt-1 text-sm text-slate-500">最近 500 条发送与鉴权记录，每 3 秒自动刷新。</p>
   </div>
-  <button class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={refresh}>刷新</button>
+  <div class="flex gap-2">
+    <button class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={refresh}>刷新</button>
+    <button
+      class="rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 {confirmClear ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 hover:bg-slate-100'}"
+      onclick={clearAll}
+      disabled={logs.length === 0}
+    >
+      {confirmClear ? "确认清空？" : "清空"}
+    </button>
+  </div>
 </div>
 
 <div class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">

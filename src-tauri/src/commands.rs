@@ -314,6 +314,11 @@ pub async fn list_logs(state: State<'_, Arc<AppState>>) -> Result<Vec<LogEntry>,
     Ok(state.store.load_logs())
 }
 
+#[tauri::command]
+pub async fn clear_logs(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.store.clear_logs().map_err(|e| e.to_string())
+}
+
 /// 发消息页：用账号自己的凭据发给它自己，不经 webhook/鉴权；日志与 webhook 一致。
 #[tauri::command]
 pub async fn send_test(

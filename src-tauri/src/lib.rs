@@ -37,6 +37,7 @@ pub fn run() {
             commands::server_start,
             commands::server_stop,
             commands::list_logs,
+            commands::clear_logs,
             commands::send_test,
         ])
         .run(tauri::generate_context!())

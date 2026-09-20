@@ -146,6 +146,11 @@ impl Store {
         self.read(LOGS_FILE).unwrap_or_default()
     }
 
+    pub fn clear_logs(&self) -> io::Result<()> {
+        let _g = self.io_lock.lock().unwrap();
+        self.write(LOGS_FILE, &Vec::<LogEntry>::new())
+    }
+
     pub fn append_log(&self, entry: LogEntry) -> io::Result<()> {
         let _g = self.io_lock.lock().unwrap();
         let mut logs = self.load_logs();
@@ -263,6 +268,18 @@ mod tests {
         assert_eq!(logs.len(), MAX_LOGS);
         assert_eq!(logs[0].text, format!("m{}", MAX_LOGS + 9));
         assert_eq!(logs.last().unwrap().text, "m10");
+    }
+
+    #[test]
+    fn clear_logs_empties_the_ring() {
+        let (_d, s) = tmp();
+        s.append_log(LogEntry::now(true, None, "u", "u", "a")).unwrap();
+        s.append_log(LogEntry::now(false, Some("x"), "u", "u", "b")).unwrap();
+        assert_eq!(s.load_logs().len(), 2);
+        s.clear_logs().unwrap();
+        assert!(s.load_logs().is_empty());
+        s.append_log(LogEntry::now(true, None, "u", "u", "c")).unwrap();
+        assert_eq!(s.load_logs().len(), 1, "清空后可继续追加");
     }
 
     #[test]

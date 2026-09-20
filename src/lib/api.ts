@@ -60,5 +60,6 @@ export const api = {
   serverStart: () => invoke<StatusInfo>("server_start"),
   serverStop: () => invoke<StatusInfo>("server_stop"),
   listLogs: () => invoke<LogEntry[]>("list_logs"),
+  clearLogs: () => invoke<void>("clear_logs"),
   sendTest: (userId: string, text: string) => invoke<string>("send_test", { userId, text }),
 };
