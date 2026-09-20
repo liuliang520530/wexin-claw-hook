@@ -1,6 +1,33 @@
 # weixin-clawbot-webhook
 
-把微信 ClawBot（腾讯官方 iLink 协议）包成一个本地 webhook：扫码登录一次，之后局域网内任何脚本 / curl / CI 一行请求就能给你的微信发消息。Tauri 2 + Rust，单 exe。
+把微信 ClawBot（腾讯官方 iLink Bot 协议）包成一个本地 HTTP webhook：扫码登录一次，之后局域网内任何脚本 / curl / CI 一行请求就能给你的微信主动发消息。
+
+Tauri 2 + Rust 单 exe，不依赖 Node / Python 运行环境，Windows 10/11 开箱即用。
+
+## 这是做什么用的
+
+给「程序 → 人」的通知场景用的。凡是你的代码想主动往微信里推一条消息，都可以用它：
+
+- CI/CD 部署完成、测试失败时通知你
+- 定时任务 / 爬虫 / 监控脚本报警（磁盘满、服务宕机、价格波动……）
+- 家里的 NAS、树莓派、软路由状态播报
+- 任何能发 HTTP 请求的地方——只要一行 curl
+
+原理很简单：它在本机起了一个 HTTP 服务，你 `POST /send`，它调用微信官方的 iLink Bot API 把文本发到你扫码登录的那个微信上。
+
+## 功能
+
+- **多账号**：每扫一次码接入一个微信，各自独立凭据；同一账号重复扫码即刷新登录
+- **本地 webhook**：默认监听 `9720` 端口，API key 鉴权，局域网内可直接调用
+- **图形界面**：扫码登录、发消息测试、调用日志（最近 500 条）、端口 / API key 设置
+- **单文件分发**：安装版 + 免安装 portable 版，GitHub Actions 自动构建发布
+
+## 实现方案
+
+- **协议**：腾讯官方 iLink Bot API（`ilinkai.weixin.qq.com`，参考官方包 `@tencent-weixin/openclaw-weixin`），非逆向。扫码 → 长轮询确认 → 拿到 `bot_token` 等凭据 → 用凭据调 `/ilink/bot/sendmessage` 发文本。
+- **后端**（`src-tauri/src/`）：Rust + tokio + axum 提供 HTTP 服务；reqwest 调 iLink 接口；凭据 / 配置 / 日志以 JSON 持久化在本地。
+- **前端**：Svelte 5 + SvelteKit（静态适配）+ Tailwind CSS 4，通过 Tauri command 与后端通信，负责扫码、账号管理、测试发送、日志与设置页。
+- **打包**：Tauri 2 bundle（NSIS 安装包 + portable exe），推 tag 自动构建发布。
 
 ## 安装
 
@@ -33,7 +60,7 @@ curl -X POST http://<本机IP>:9720/send \
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | `POST /send` | `{"text": "...", "to": "可选"}` | 发文本消息，需鉴权。`to` 必须是已接入账号的 ID（用该账号自己的凭据发给自己）；缺省 = 默认账号 |
-| `GET /health` | — | `{"ok":true,"logged_in":bool,"version":"..."}`，不鉴权 |
+| `GET /health` | — | `{"ok":true,"logged_in":bool,"accounts":n,"version":"..."}`，不鉴权 |
 
 | HTTP | code | 含义 |
 |---|---|---|
@@ -49,17 +76,18 @@ curl -X POST http://<本机IP>:9720/send \
 
 ## 数据目录
 
-`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`accounts.json`（各账号的登录凭据，明文，请勿外传；v1 的 `credentials.json` 首次启动时自动迁移）、`config.json`（端口/API key/收件人）、`logs.json`（最近 500 条）。
+`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`accounts.json`（各账号的登录凭据，明文，请勿外传；v1 的 `credentials.json` 首次启动时自动迁移）、`config.json`（端口/API key/默认账号）、`logs.json`（最近 500 条）。
 
 ## 开发
 
 ```bash
 pnpm install
-pnpm tauri dev          # 开发运行
-cd src-tauri && cargo test   # 先在根目录 pnpm build 一次
+pnpm tauri dev               # 开发运行
+pnpm build                   # 构建前端（cargo test 前需要）
+cd src-tauri && cargo test   # 后端测试
 ```
 
-发版：把 `src-tauri/tauri.conf.json` 里的 `version` 改好，打 tag `vX.Y.Z` 推上去，GitHub Actions 自动构建并发布 Release。
+发版：把 `src-tauri/tauri.conf.json` 里的 `version` 改好，打 tag `vX.Y.Z` 推上去，GitHub Actions 自动构建并发布 Release（tag 与配置文件版本不一致会直接失败）。
 
 ## 说明与限制
 
