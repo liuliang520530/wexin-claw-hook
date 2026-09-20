@@ -95,43 +95,43 @@
   });
 </script>
 
-<div class="flex h-[calc(100vh-4rem)] flex-col">
+<div class="flex h-[calc(100vh-5.25rem)] flex-col">
   <div>
-    <h2 class="text-lg font-semibold">发消息</h2>
-    <p class="mt-1 text-sm text-slate-500">
+    <h2 class="page-title">发消息</h2>
+    <p class="page-desc">
       用账号自己的机器人给自己发，记录与 webhook 共用同一份日志。每次发送都会消耗微信侧配额。
     </p>
   </div>
 
   <div class="mt-4 flex items-center gap-3">
-    <label for="chat-account" class="text-sm text-slate-600">账号</label>
-    <select id="chat-account" class="rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm" bind:value={selected}>
+    <label for="chat-account" class="text-sm text-ink-2">账号</label>
+    <select id="chat-account" class="input py-1.5" bind:value={selected}>
       {#each accounts as a (a.user_id)}
         <option value={a.user_id}>{a.name}{a.token_expired ? "（已失效）" : ""} · {a.user_id}</option>
       {/each}
     </select>
   </div>
 
-  <div bind:this={listEl} class="mt-4 flex-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-100 p-4">
+  <div bind:this={listEl} class="card mt-4 flex-1 overflow-y-auto bg-panel/60 p-4">
     {#if accounts.length === 0}
-      <p class="text-center text-sm text-slate-500">尚未接入任何账号，请先到「账号」页扫码。</p>
+      <p class="text-center text-sm text-ink-3">尚未接入任何账号，请先到「账号」页扫码。</p>
     {:else if messages.length === 0}
-      <p class="text-center text-sm text-slate-500">还没有发给 {account?.name ?? selected} 的消息</p>
+      <p class="text-center text-sm text-ink-3">还没有发给 {account?.name ?? selected} 的消息</p>
     {:else}
       <div class="flex flex-col gap-3">
         {#each messages as m, i (m.ts + i)}
-          <div class="flex flex-col items-end">
+          <div class="flex flex-col items-end animate-fade-in">
             <div
-              class="max-w-[70%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm px-4 py-2 text-sm shadow-sm {m.ok
-                ? 'bg-emerald-500 text-white'
-                : 'border border-rose-300 bg-rose-50 text-rose-800'}"
+              class="max-w-[70%] whitespace-pre-wrap break-words rounded-2xl rounded-tr-sm px-4 py-2 text-sm {m.ok
+                ? 'bg-accent text-white'
+                : 'border border-danger/40 bg-danger-soft text-danger'}"
             >
               {m.text}
             </div>
-            <div class="mt-1 text-[11px] text-slate-400">
+            <div class="mt-1 text-[11px] text-ink-3">
               {m.ts}
               {#if !m.ok}
-                <span class="text-rose-600">· 失败：{codeLabel[m.code ?? ""] ?? m.code ?? "未知错误"}</span>
+                <span class="text-danger">· 失败：{codeLabel[m.code ?? ""] ?? m.code ?? "未知错误"}</span>
               {/if}
             </div>
           </div>
@@ -141,26 +141,23 @@
   </div>
 
   {#if account?.token_expired}
-    <p class="mt-3 text-sm text-rose-600">「{account.name}」登录已失效，请到「账号」页重新扫码。</p>
+    <p class="alert-danger mt-3">「{account.name}」登录已失效，请到「账号」页重新扫码。</p>
   {/if}
   {#if error}
-    <p class="mt-3 text-sm text-rose-600">{error}</p>
+    <p class="alert-danger mt-3">{error}</p>
   {/if}
 
   <div class="mt-3 flex items-end gap-3">
     <textarea
-      class="flex-1 resize-none rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
+      class="input flex-1 resize-none"
       rows="2"
+      aria-label="消息内容"
       placeholder="输入消息，Enter 发送，Shift+Enter 换行"
       bind:value={text}
       onkeydown={onKeydown}
       disabled={!account || account.token_expired || sending}
     ></textarea>
-    <button
-      class="rounded-md bg-emerald-600 px-5 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
-      onclick={send}
-      disabled={!canSend}
-    >
+    <button class="btn-primary px-5" onclick={send} disabled={!canSend}>
       {sending ? "发送中…" : "发送"}
     </button>
   </div>

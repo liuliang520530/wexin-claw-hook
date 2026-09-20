@@ -1,1 +1,88 @@
 @import "tailwindcss";
+
+/* ---- Claude 风格设计令牌 ---- */
+@theme {
+  --color-canvas: #f9f9f8;      /* 主背景 米白 */
+  --color-panel: #f0f0ee;       /* 侧边栏 淡灰 */
+  --color-panel-active: #e4e3df; /* 侧边栏选中态 */
+  --color-surface: #ffffff;     /* 卡片 */
+  --color-line: #e6e4df;        /* 边框 */
+  --color-line-strong: #cfcdc6;
+  --color-ink: #1f1e1d;         /* 主文字 */
+  --color-ink-2: #4b4a46;       /* 次级文字 */
+  --color-ink-3: #7a7873;       /* 弱化文字 */
+  --color-accent: #d97757;      /* Claude 陶土橙 */
+  --color-accent-hover: #c4633f;
+  --color-accent-soft: #fbeee7;
+  --color-ok: #4f8a5b;
+  --color-ok-soft: #eaf3ec;
+  --color-danger: #b5453b;
+  --color-danger-soft: #fbecea;
+
+  --font-serif: Georgia, "Times New Roman", "Songti SC", "Noto Serif CJK SC", "SimSun", serif;
+  --font-sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --shadow-card: 0 1px 2px rgba(31, 30, 29, 0.04), 0 0 0 1px rgba(31, 30, 29, 0.03);
+  --shadow-card-hover: 0 6px 16px rgba(31, 30, 29, 0.08), 0 0 0 1px rgba(31, 30, 29, 0.04);
+
+  --animate-fade-in: fade-in 240ms ease-out both;
+
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+}
+
+@layer base {
+  html { font-family: var(--font-sans); color: var(--color-ink); }
+  body { background: var(--color-canvas); -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { font-family: var(--font-serif); letter-spacing: -0.01em; }
+  button, [role="button"], select, label[for] { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+}
+
+@layer components {
+  /* 卡片：悬停上移 + 阴影，出现时淡入 */
+  .card {
+    @apply rounded-xl border border-line bg-surface animate-fade-in;
+    box-shadow: var(--shadow-card);
+    transition: transform 200ms ease, box-shadow 200ms ease;
+  }
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-card-hover);
+  }
+
+  .btn, .btn-primary, .btn-secondary, .btn-danger, .btn-confirm {
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors duration-200 disabled:opacity-50;
+  }
+  .btn-primary { @apply bg-accent text-white hover:bg-accent-hover; }
+  .btn-secondary { @apply border border-line-strong bg-surface text-ink hover:bg-panel; }
+  .btn-danger { @apply bg-danger text-white hover:opacity-90; }
+  .btn-confirm { @apply border border-danger bg-danger-soft text-danger; }
+  .btn-sm { @apply px-2.5! py-1! text-xs!; }
+  .btn-link { @apply text-xs text-ink-3 transition-colors duration-200 hover:text-ink; }
+
+  .input {
+    @apply rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink transition-colors duration-200 placeholder:text-ink-3 focus:border-accent disabled:bg-panel;
+  }
+
+  .page-title { @apply text-2xl font-medium text-ink; }
+  .page-desc { @apply mt-1.5 max-w-2xl text-sm leading-relaxed text-ink-2; }
+  .section-title { @apply text-base font-medium text-ink; }
+
+  .alert-ok { @apply rounded-lg border border-ok/30 bg-ok-soft px-3 py-2 text-sm text-ok; }
+  .alert-danger { @apply rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger; }
+
+  .badge { @apply inline-flex items-center rounded-md px-1.5 py-0.5 text-[11px] font-medium; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .card-hover:hover { transform: none; }
+}

@@ -39,15 +39,15 @@
   });
 </script>
 
-<div class="flex items-center justify-between">
+<div class="flex items-end justify-between gap-4">
   <div>
-    <h2 class="text-lg font-semibold">日志</h2>
-    <p class="mt-1 text-sm text-slate-500">最近 500 条发送与鉴权记录，每 3 秒自动刷新。</p>
+    <h2 class="page-title">日志</h2>
+    <p class="page-desc">最近 500 条发送与鉴权记录，每 3 秒自动刷新。</p>
   </div>
-  <div class="flex gap-2">
-    <button class="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-100" onclick={refresh}>刷新</button>
+  <div class="flex shrink-0 gap-2">
+    <button class="btn-secondary" onclick={refresh}>刷新</button>
     <button
-      class="rounded-md border px-3 py-1.5 text-sm disabled:opacity-50 {confirmClear ? 'border-rose-400 bg-rose-50 text-rose-700' : 'border-slate-300 hover:bg-slate-100'}"
+      class={confirmClear ? "btn-confirm" : "btn-secondary"}
       onclick={clearAll}
       disabled={logs.length === 0}
     >
@@ -56,32 +56,32 @@
   </div>
 </div>
 
-<div class="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
+<div class="card mt-5 overflow-hidden">
   {#if logs.length === 0}
-    <p class="p-6 text-sm text-slate-500">还没有记录。</p>
+    <p class="p-6 text-sm text-ink-3">还没有记录。</p>
   {:else}
     <table class="w-full text-sm">
-      <thead class="bg-slate-50 text-left text-xs uppercase text-slate-500">
+      <thead class="bg-panel text-left text-xs text-ink-3">
         <tr>
-          <th class="px-4 py-2.5">时间</th>
-          <th class="px-4 py-2.5">结果</th>
-          <th class="px-4 py-2.5">账号</th>
-          <th class="px-4 py-2.5">内容</th>
+          <th class="px-4 py-2.5 font-medium">时间</th>
+          <th class="px-4 py-2.5 font-medium">结果</th>
+          <th class="px-4 py-2.5 font-medium">账号</th>
+          <th class="px-4 py-2.5 font-medium">内容</th>
         </tr>
       </thead>
       <tbody>
         {#each logs as l, i (i)}
-          <tr class="border-t border-slate-100 align-top">
-            <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-slate-500">{l.ts}</td>
+          <tr class="border-t border-line align-top transition-colors duration-200 hover:bg-panel/50">
+            <td class="whitespace-nowrap px-4 py-2 font-mono text-xs text-ink-3">{l.ts}</td>
             <td class="whitespace-nowrap px-4 py-2">
               {#if l.ok}
-                <span class="rounded bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">成功</span>
+                <span class="badge bg-ok-soft text-ok">成功</span>
               {:else}
-                <span class="rounded bg-rose-100 px-2 py-0.5 text-xs text-rose-700">{l.code ?? "失败"}</span>
+                <span class="badge bg-danger-soft text-danger">{l.code ?? "失败"}</span>
               {/if}
             </td>
-            <td class="px-4 py-2 text-xs text-slate-600" title={l.to}>{l.to ? nameOf(l.to) : "-"}</td>
-            <td class="px-4 py-2 break-all text-slate-700">{l.text}</td>
+            <td class="px-4 py-2 text-xs text-ink-2" title={l.to}>{l.to ? nameOf(l.to) : "-"}</td>
+            <td class="px-4 py-2 break-all text-ink">{l.text}</td>
           </tr>
         {/each}
       </tbody>
