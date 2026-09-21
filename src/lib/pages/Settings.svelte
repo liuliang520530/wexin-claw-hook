@@ -115,7 +115,7 @@
 
 <section class="card card-hover mt-4 max-w-2xl p-5">
   <h3 class="section-title">调用示例</h3>
-  <p class="mt-1 text-xs leading-relaxed text-ink-3">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（ipconfig 查看）。to 是账号 ID，示例已填默认账号，可换成任一已接入账号（账号页可复制）；省略 to 即发给默认账号。无需 Content-Type 头。</p>
+  <p class="mt-1 text-xs leading-relaxed text-ink-3">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（ipconfig 查看）。to 是已接入账号的 ID（账号页可复制），消息由该账号自己的机器人发给它自己，不能跨账号发送；示例已填默认账号，省略 to 即发给默认账号。无需 Content-Type 头。</p>
   <pre class="mt-3 overflow-x-auto rounded-lg bg-ink p-3 font-mono text-xs text-canvas">{curlDisplay}</pre>
   <button class="btn-secondary mt-2" onclick={() => copy(curl)}>复制命令</button>
   <table class="mt-4 w-full text-xs">

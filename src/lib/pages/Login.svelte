@@ -13,6 +13,7 @@
   let editingId = $state<string | null>(null);
   let editName = $state("");
   let confirmRemoveId = $state<string | null>(null);
+  let copiedId = $state<string | null>(null); // 刚复制过 ID 的账号，短暂显示对勾
   let timer: ReturnType<typeof setInterval> | null = null;
 
   const label: Record<string, string> = {
@@ -123,6 +124,16 @@
     }
   }
 
+  async function copyId(id: string) {
+    try {
+      await navigator.clipboard.writeText(id);
+      copiedId = id;
+      setTimeout(() => { if (copiedId === id) copiedId = null; }, 1500);
+    } catch (e) {
+      error = String(e);
+    }
+  }
+
   // 页面切换回来时恢复后端仍在进行中的登录会话
   onMount(async () => {
     await loadAccounts();
@@ -180,7 +191,24 @@
               {/if}
             </div>
             <dl class="mt-2.5 space-y-0.5 text-xs">
-              <div class="flex gap-2"><dt class="w-14 text-ink-3">账号 ID</dt><dd class="truncate font-mono text-ink-2">{a.user_id}</dd></div>
+              <div class="flex gap-2">
+                <dt class="w-14 text-ink-3">账号 ID</dt>
+                <dd class="flex min-w-0 items-center gap-1.5 font-mono text-ink-2">
+                  <span class="truncate">{a.user_id}</span>
+                  <button
+                    class="btn-link inline-flex shrink-0 {copiedId === a.user_id ? 'text-ok hover:text-ok' : ''}"
+                    title={copiedId === a.user_id ? "已复制" : "复制账号 ID"}
+                    aria-label="复制账号 ID"
+                    onclick={() => copyId(a.user_id)}
+                  >
+                    {#if copiedId === a.user_id}
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>
+                    {:else}
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+                    {/if}
+                  </button>
+                </dd>
+              </div>
               <div class="flex gap-2"><dt class="w-14 text-ink-3">Bot ID</dt><dd class="truncate font-mono text-ink-3">{a.bot_id}</dd></div>
             </dl>
             {#if a.token_expired}
