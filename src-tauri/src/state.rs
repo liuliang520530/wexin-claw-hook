@@ -11,6 +11,8 @@ use crate::ilink::client::http_client;
 use crate::ilink::types::Credentials;
 use crate::server::ServerHandle;
 use crate::store::{Account, Config, Store};
+use crate::wecom::api::WecomApi;
+use crate::wecom::types::WecomApp;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -29,7 +31,7 @@ pub struct LoginSession {
     pub status: LoginStatus,
 }
 
-/// 锁顺序：accounts -> config，避免死锁。
+/// 锁顺序：accounts -> config -> wecom_apps，且企微方法内不嵌套持锁；wecom_refresh 内只再拿 wecom_apps。
 pub struct AppState {
     pub store: Store,
     pub http: reqwest::Client,
@@ -39,20 +41,34 @@ pub struct AppState {
     pub server: Mutex<Option<ServerHandle>>,
     /// 各来源 IP 最近一次记录鉴权失败日志的时间，用于限流（None 表示来源未知）。
     pub auth_fail_log: Mutex<HashMap<Option<IpAddr>, Instant>>,
+    pub wecom_api: WecomApi,
+    pub wecom_apps: RwLock<Vec<WecomApp>>,
+    /// 刷新 access_token 的全局锁；刷新两小时才一次，不按应用分锁。
+    pub wecom_refresh: Mutex<()>,
 }
 
 impl AppState {
     pub fn new(store: Store) -> Arc<Self> {
+        Self::new_with_wecom_base(store, crate::wecom::BASE_URL)
+    }
+
+    /// 测试用：企业微信 API 指向 mock 服务。
+    pub fn new_with_wecom_base(store: Store, wecom_base_url: &str) -> Arc<Self> {
         let accounts = store.load_accounts();
         let config = store.load_config();
+        let wecom_apps = store.load_wecom_apps();
+        let http = http_client();
         Arc::new(Self {
             store,
-            http: http_client(),
+            wecom_api: WecomApi::new(http.clone(), wecom_base_url),
+            http,
             accounts: RwLock::new(accounts),
             config: RwLock::new(config),
             login: RwLock::new(None),
             server: Mutex::new(None),
             auth_fail_log: Mutex::new(HashMap::new()),
+            wecom_apps: RwLock::new(wecom_apps),
+            wecom_refresh: Mutex::new(()),
         })
     }
 
