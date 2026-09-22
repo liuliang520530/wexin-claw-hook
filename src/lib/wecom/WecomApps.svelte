@@ -129,6 +129,14 @@
     error = "";
     try {
       apps = await api.wecomRemoveApp(a.name);
+      if (editingCreds === a.name) closeForm();
+      if (apps.length === 0) {
+        editingCreds = null;
+        fName = "";
+        fCorpid = "";
+        fAgentid = "";
+        fSecret = "";
+      }
       onchange();
     } catch (e) {
       error = String(e);

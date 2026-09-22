@@ -113,4 +113,4 @@ cd src-tauri && cargo test   # 后端测试
 - bot_token 有效期数天到数周，失效后 `/send` 返回 503 `token_expired`，重新扫码即可。
 - 协议为腾讯官方 iLink Bot API（`ilinkai.weixin.qq.com`），非逆向；协议演进可能导致失效。
 - 企业微信只支持成员 UserID 与 `@all`，不支持部门 / 标签；文本超过 2048 字节由企业微信截断；部分收件人不在可见范围时仍会发给其余人，并在 `invalid_users` 里返回。
-- 若企业微信后台开启了「企业可信IP」，本机公网 IP 不在名单内会返回 502 且 error 含「不安全的访问IP」；请在后台配置或关闭该功能。
+- 若企业微信后台开启了「企业可信IP」，本机公网 IP 不在名单内会返回 502 且 error 含 errcode=60020；请在后台配置或关闭该功能。
