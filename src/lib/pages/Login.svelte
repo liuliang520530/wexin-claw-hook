@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { api, type AccountView, type LoginView, type StatusInfo } from "$lib/api";
+  import ChannelTabs from "$lib/ChannelTabs.svelte";
+  import WecomApps from "$lib/wecom/WecomApps.svelte";
+  import { channel } from "$lib/channel.svelte";
 
   let { status, onchange }: { status: StatusInfo | null; onchange: () => void } = $props();
 
@@ -161,7 +164,14 @@
 </script>
 
 <h2 class="page-title">账号</h2>
-<p class="page-desc">
+<ChannelTabs />
+
+{#if channel.value === "wecom"}
+  <div class="mt-4 animate-fade-in">
+    <WecomApps {onchange} />
+  </div>
+{:else}
+<p class="page-desc mt-4">
   每扫一次码就接入一个微信账号，消息只能发给已接入的账号。同一账号重复扫码即刷新登录。
 </p>
 
@@ -280,4 +290,5 @@
 
 {#if error}
   <p class="alert-danger mt-3 max-w-2xl">{error}</p>
+{/if}
 {/if}
