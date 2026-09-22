@@ -1,3 +1,4 @@
+pub mod api;
 pub mod types;
 
 pub const BASE_URL: &str = "https://qyapi.weixin.qq.com";
