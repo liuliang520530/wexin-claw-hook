@@ -49,15 +49,24 @@ pub struct AppState {
 
 impl AppState {
     pub fn new(store: Store) -> Arc<Self> {
-        Self::new_with_wecom_base(store, crate::wecom::BASE_URL)
+        Self::build(store, crate::wecom::BASE_URL, http_client())
     }
 
-    /// 测试用：企业微信 API 指向 mock 服务。
+    /// 测试用：企业微信 API 指向 mock 服务，并强制直连（测试机可能配置了系统代理，
+    /// 走代理访问 127.0.0.1 的 wiremock 会偶发连接失败）。
     pub fn new_with_wecom_base(store: Store, wecom_base_url: &str) -> Arc<Self> {
+        let http = reqwest::Client::builder()
+            .timeout(crate::ilink::client::SEND_TIMEOUT)
+            .no_proxy()
+            .build()
+            .expect("reqwest client");
+        Self::build(store, wecom_base_url, http)
+    }
+
+    fn build(store: Store, wecom_base_url: &str, http: reqwest::Client) -> Arc<Self> {
         let accounts = store.load_accounts();
         let config = store.load_config();
         let wecom_apps = store.load_wecom_apps();
-        let http = http_client();
         Arc::new(Self {
             store,
             wecom_api: WecomApi::new(http.clone(), wecom_base_url),
