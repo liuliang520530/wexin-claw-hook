@@ -76,6 +76,12 @@
   // 复制用真实 key；页面展示跟随"显示/隐藏"遮罩
   const curl = $derived(curlWith(apiKey));
   const curlDisplay = $derived(curlWith(masked));
+  function wecomCurlWith(key: string) {
+    const app = status?.default_wecom_app ?? "<应用备注名>";
+    return `curl -X POST http://<本机IP>:${status?.port ?? port}/wecom/send -H "X-API-Key: ${key}" -d '{"app":"${app}","to":"@all","text":"你好"}'`;
+  }
+  const wecomCurl = $derived(wecomCurlWith(apiKey));
+  const wecomCurlDisplay = $derived(wecomCurlWith(masked));
 
   onMount(load);
 </script>
@@ -118,6 +124,10 @@
   <p class="mt-1 text-xs leading-relaxed text-ink-3">把 &lt;本机IP&gt; 换成这台电脑的局域网 IP（ipconfig 查看）。to 是已接入账号的 ID（账号页可复制），消息由该账号自己的机器人发给它自己，不能跨账号发送；示例已填默认账号，省略 to 即发给默认账号。无需 Content-Type 头。</p>
   <pre class="mt-3 overflow-x-auto rounded-lg bg-ink p-3 font-mono text-xs text-canvas">{curlDisplay}</pre>
   <button class="btn-secondary mt-2" onclick={() => copy(curl)}>复制命令</button>
+  <h4 class="mt-5 text-sm font-medium text-ink">企业微信</h4>
+  <p class="mt-1 text-xs leading-relaxed text-ink-3">app 是账号页里应用的备注名，省略即用默认应用；to 是成员 UserID（多个用 | 分隔）或 @all，省略即 @all。收件人必须在应用可见范围内。</p>
+  <pre class="mt-3 overflow-x-auto rounded-lg bg-ink p-3 font-mono text-xs text-canvas">{wecomCurlDisplay}</pre>
+  <button class="btn-secondary mt-2" onclick={() => copy(wecomCurl)}>复制命令</button>
   <table class="mt-4 w-full text-xs">
     <tbody class="text-ink-2">
       <tr><td class="py-1 pr-3 font-mono text-ink">200</td><td>已发送</td></tr>
@@ -126,6 +136,9 @@
       <tr><td class="py-1 pr-3 font-mono text-ink">429</td><td>微信侧拒绝：对方尚未与机器人对话（请先让对方在微信里给机器人发一条消息），或触发频率限制（约 7 条/5 分钟）</td></tr>
       <tr><td class="py-1 pr-3 font-mono text-ink">503</td><td>未登录 / 登录已失效（重新扫码）</td></tr>
       <tr><td class="py-1 pr-3 font-mono text-ink">502</td><td>微信服务端或网络错误</td></tr>
+      <tr><td class="py-1 pr-3 font-mono text-ink">400</td><td>企微：app 不存在（unknown_app）/ 收件人全部无效或不在可见范围（unknown_recipient）</td></tr>
+      <tr><td class="py-1 pr-3 font-mono text-ink">503</td><td>企微：未添加应用（not_configured）/ 凭据无效（invalid_credentials）</td></tr>
+      <tr><td class="py-1 pr-3 font-mono text-ink">429</td><td>企微：频率限制（每应用对同一成员 30 次/分钟、1000 次/小时）</td></tr>
     </tbody>
   </table>
 </section>

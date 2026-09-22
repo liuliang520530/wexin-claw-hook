@@ -65,7 +65,8 @@
         <tr>
           <th class="px-4 py-2.5 font-medium">时间</th>
           <th class="px-4 py-2.5 font-medium">结果</th>
-          <th class="px-4 py-2.5 font-medium">账号</th>
+          <th class="px-4 py-2.5 font-medium">通道</th>
+          <th class="px-4 py-2.5 font-medium">账号 · 应用</th>
           <th class="px-4 py-2.5 font-medium">内容</th>
         </tr>
       </thead>
@@ -80,7 +81,20 @@
                 <span class="badge bg-danger-soft text-danger">{l.code ?? "失败"}</span>
               {/if}
             </td>
-            <td class="px-4 py-2 text-xs text-ink-2" title={l.to}>{l.to ? nameOf(l.to) : "-"}</td>
+            <td class="whitespace-nowrap px-4 py-2">
+              {#if l.channel === "wecom"}
+                <span class="badge bg-accent-soft text-accent">企微</span>
+              {:else}
+                <span class="badge bg-panel text-ink-2">微信</span>
+              {/if}
+            </td>
+            <td class="px-4 py-2 text-xs text-ink-2" title={l.to}>
+              {#if l.channel === "wecom"}
+                {l.from || "-"} → {l.to || "-"}
+              {:else}
+                {l.to ? nameOf(l.to) : "-"}
+              {/if}
+            </td>
             <td class="px-4 py-2 break-all text-ink">{l.text}</td>
           </tr>
         {/each}

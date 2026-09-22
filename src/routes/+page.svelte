@@ -72,6 +72,18 @@
         {/if}
       </div>
       <div class="flex items-center gap-2">
+        <span class="h-2 w-2 rounded-full {!status?.wecom_app_count
+          ? 'bg-line-strong'
+          : status.wecom_invalid_count >= status.wecom_app_count
+            ? 'bg-danger'
+            : 'bg-ok'}"></span>
+        {#if status?.wecom_app_count}
+          {status.wecom_app_count} 个企微应用{status.wecom_invalid_count ? `（${status.wecom_invalid_count} 个凭据无效）` : ""}
+        {:else}
+          未添加企微应用
+        {/if}
+      </div>
+      <div class="flex items-center gap-2">
         <span class="h-2 w-2 rounded-full {status?.server_running ? 'bg-ok' : 'bg-line-strong'}"></span>
         {status?.server_running ? `服务运行中 :${status.port}` : "服务已停止"}
       </div>
