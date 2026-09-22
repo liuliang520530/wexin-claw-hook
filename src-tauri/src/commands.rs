@@ -19,6 +19,9 @@ pub struct StatusInfo {
     pub default_user_id: Option<String>,
     pub server_running: bool,
     pub port: u16,
+    pub wecom_app_count: usize,
+    pub wecom_invalid_count: usize,
+    pub default_wecom_app: Option<String>,
     pub version: String,
 }
 
@@ -60,6 +63,11 @@ async fn status(state: &AppState) -> StatusInfo {
         let accounts = state.accounts.read().await;
         (accounts.len(), accounts.iter().filter(|a| a.token_expired).count())
     };
+    let default_wecom_app = state.default_wecom_app().await.map(|a| a.name);
+    let (wecom_app_count, wecom_invalid_count) = {
+        let apps = state.wecom_apps.read().await;
+        (apps.len(), apps.iter().filter(|a| a.invalid.is_some()).count())
+    };
     let cfg_port = state.config.read().await.port;
     let server = state.server.lock().await;
     StatusInfo {
@@ -69,6 +77,9 @@ async fn status(state: &AppState) -> StatusInfo {
         default_user_id,
         server_running: server.is_some(),
         port: server.as_ref().map(|h| h.port).unwrap_or(cfg_port),
+        wecom_app_count,
+        wecom_invalid_count,
+        default_wecom_app,
         version: env!("CARGO_PKG_VERSION").to_string(),
     }
 }

@@ -40,6 +40,12 @@ pub fn run() {
             commands::list_logs,
             commands::clear_logs,
             commands::send_test,
+            wecom::commands::wecom_list_apps,
+            wecom::commands::wecom_add_app,
+            wecom::commands::wecom_update_app,
+            wecom::commands::wecom_remove_app,
+            wecom::commands::wecom_set_default,
+            wecom::commands::wecom_send_test,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

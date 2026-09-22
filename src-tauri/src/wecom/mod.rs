@@ -1,4 +1,5 @@
 pub mod api;
+pub mod commands;
 pub mod sender;
 pub mod state;
 pub mod token;
