@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
 
 use crate::ilink::types::Credentials;
+use crate::wecom::types::WecomApp;
 
 pub const DEFAULT_PORT: u16 = 9720;
 pub const MAX_LOGS: usize = 500;
@@ -16,6 +17,7 @@ const ACCOUNTS_FILE: &str = "accounts.json";
 const LEGACY_CREDENTIALS_FILE: &str = "credentials.json";
 const CONFIG_FILE: &str = "config.json";
 const LOGS_FILE: &str = "logs.json";
+const WECOM_APPS_FILE: &str = "wecom_apps.json";
 
 /// 一次扫码 = 一个账号：扫码者的微信用户 ID + 属于该用户的 bot 凭据。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,6 +42,13 @@ pub struct Config {
     /// 默认账号的 user_id；None 表示用列表里的第一个。
     #[serde(default)]
     pub default_account: Option<String>,
+    /// 默认企业微信应用的备注名；None 表示用列表里的第一个。
+    #[serde(default)]
+    pub default_wecom_app: Option<String>,
+}
+
+fn default_channel() -> String {
+    "weixin".to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,7 +56,10 @@ pub struct LogEntry {
     pub ts: String,
     pub ok: bool,
     pub code: Option<String>,
-    /// 用哪个账号（user_id）发的；鉴权失败等无账号的记录为空。
+    /// "weixin" | "wecom"；旧记录缺省 weixin。
+    #[serde(default = "default_channel")]
+    pub channel: String,
+    /// 用哪个账号（user_id）/ 哪个企微应用（备注名）发的；鉴权失败等无账号的记录为空。
     #[serde(default)]
     pub from: String,
     pub to: String,
@@ -56,10 +68,19 @@ pub struct LogEntry {
 
 impl LogEntry {
     pub fn now(ok: bool, code: Option<&str>, from: &str, to: &str, text: &str) -> Self {
+        Self::with_channel("weixin", ok, code, from, to, text)
+    }
+
+    pub fn wecom(ok: bool, code: Option<&str>, app: &str, to: &str, text: &str) -> Self {
+        Self::with_channel("wecom", ok, code, app, to, text)
+    }
+
+    fn with_channel(channel: &str, ok: bool, code: Option<&str>, from: &str, to: &str, text: &str) -> Self {
         Self {
             ts: chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
             ok,
             code: code.map(str::to_string),
+            channel: channel.to_string(),
             from: from.to_string(),
             to: to.to_string(),
             text: log_text(text),
@@ -128,11 +149,25 @@ impl Store {
         self.write(ACCOUNTS_FILE, &accounts)
     }
 
+    pub fn load_wecom_apps(&self) -> Vec<WecomApp> {
+        self.read(WECOM_APPS_FILE).unwrap_or_default()
+    }
+
+    pub fn save_wecom_apps(&self, apps: &[WecomApp]) -> io::Result<()> {
+        let _g = self.io_lock.lock().unwrap();
+        self.write(WECOM_APPS_FILE, &apps)
+    }
+
     pub fn load_config(&self) -> Config {
         if let Some(c) = self.read::<Config>(CONFIG_FILE) {
             return c;
         }
-        let c = Config { port: DEFAULT_PORT, api_key: generate_api_key(), default_account: None };
+        let c = Config {
+            port: DEFAULT_PORT,
+            api_key: generate_api_key(),
+            default_account: None,
+            default_wecom_app: None,
+        };
         let _ = self.save_config(&c);
         c
     }
@@ -258,6 +293,7 @@ mod tests {
                 ts: format!("t{i}"),
                 ok: true,
                 code: None,
+                channel: "weixin".into(),
                 from: "u".into(),
                 to: "u".into(),
                 text: format!("m{i}"),
@@ -300,5 +336,51 @@ mod tests {
         let long: String = "中".repeat(300);
         assert_eq!(log_text(&long).chars().count(), LOG_TEXT_CHARS);
         assert_eq!(log_text("短"), "短");
+    }
+
+    #[test]
+    fn wecom_apps_roundtrip_and_default_empty() {
+        use crate::wecom::types::{CachedToken, WecomApp};
+        let (_d, s) = tmp();
+        assert!(s.load_wecom_apps().is_empty());
+        let apps = vec![WecomApp {
+            name: "运维".into(),
+            corpid: "ww1".into(),
+            agentid: 1000002,
+            secret: "sec".into(),
+            token: Some(CachedToken { access_token: "t".into(), expires_at: 123 }),
+            invalid: None,
+        }];
+        s.save_wecom_apps(&apps).unwrap();
+        assert_eq!(s.load_wecom_apps(), apps);
+    }
+
+    #[test]
+    fn old_logs_without_channel_default_to_weixin() {
+        let (d, s) = tmp();
+        std::fs::write(
+            d.path().join("logs.json"),
+            br#"[{"ts":"t","ok":true,"code":null,"from":"u","to":"u","text":"x"}]"#,
+        )
+        .unwrap();
+        assert_eq!(s.load_logs()[0].channel, "weixin");
+        let e = LogEntry::wecom(false, Some("unknown_app"), "运维", "@all", "hi");
+        assert_eq!(e.channel, "wecom");
+        assert_eq!(e.from, "运维");
+        assert_eq!(e.to, "@all");
+        assert_eq!(e.code.as_deref(), Some("unknown_app"));
+        assert_eq!(LogEntry::now(true, None, "a", "a", "x").channel, "weixin");
+    }
+
+    #[test]
+    fn config_without_default_wecom_app_loads_as_none() {
+        let (d, s) = tmp();
+        std::fs::write(d.path().join("config.json"), br#"{"port":9720,"api_key":"k"}"#).unwrap();
+        let c = s.load_config();
+        assert!(c.default_wecom_app.is_none());
+        let mut c2 = c.clone();
+        c2.default_wecom_app = Some("运维".into());
+        s.save_config(&c2).unwrap();
+        assert_eq!(s.load_config().default_wecom_app.as_deref(), Some("运维"));
     }
 }

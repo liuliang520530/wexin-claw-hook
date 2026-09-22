@@ -4,6 +4,7 @@ pub mod sender;
 pub mod server;
 pub mod state;
 pub mod store;
+pub mod wecom;
 
 use tauri::Manager;
 
