@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import { api, type AccountView, type LogEntry, type StatusInfo } from "$lib/api";
+  import ChannelTabs from "$lib/ChannelTabs.svelte";
+  import WecomChat from "$lib/wecom/WecomChat.svelte";
+  import { channel } from "$lib/channel.svelte";
 
   let { status }: { status: StatusInfo | null } = $props();
 
@@ -24,7 +27,7 @@
 
   // 日志最新在前，聊天记录按时间正序展示
   const messages = $derived(
-    selected ? logs.filter((l) => l.to === selected).slice().reverse() : [],
+    selected ? logs.filter((l) => l.channel === "weixin" && l.to === selected).slice().reverse() : [],
   );
 
   const canSend = $derived(!!account && !account.token_expired && text.trim().length > 0 && !sending);
@@ -98,10 +101,17 @@
 <div class="flex h-[calc(100vh-5.25rem)] flex-col">
   <div>
     <h2 class="page-title">发消息</h2>
-    <p class="page-desc">
-      用账号自己的机器人给自己发，记录与 webhook 共用同一份日志。每次发送都会消耗微信侧配额。
-    </p>
+    <ChannelTabs />
   </div>
+
+  {#if channel.value === "wecom"}
+    <div class="mt-4 flex min-h-0 flex-1 flex-col animate-fade-in">
+      <WecomChat {status} />
+    </div>
+  {:else}
+  <p class="page-desc mt-4">
+    用账号自己的机器人给自己发，记录与 webhook 共用同一份日志。每次发送都会消耗微信侧配额。
+  </p>
 
   <div class="mt-4 flex items-center gap-3">
     <label for="chat-account" class="text-sm text-ink-2">账号</label>
@@ -161,4 +171,5 @@
       {sending ? "发送中…" : "发送"}
     </button>
   </div>
+  {/if}
 </div>
