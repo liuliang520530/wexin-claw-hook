@@ -147,12 +147,17 @@ fn truncate(s: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ilink::client::http_client;
     use wiremock::matchers::{body_partial_json, method, path, query_param};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    /// 直连客户端：测试机可能配置了系统代理，走代理会把连接失败变成代理的 5xx，短路泄露守卫测试。
     fn api(base: &str) -> WecomApi {
-        WecomApi::new(http_client(), base)
+        let http = reqwest::Client::builder()
+            .timeout(crate::ilink::client::SEND_TIMEOUT)
+            .no_proxy()
+            .build()
+            .unwrap();
+        WecomApi::new(http, base)
     }
 
     #[tokio::test]

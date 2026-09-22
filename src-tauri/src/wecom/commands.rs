@@ -83,9 +83,9 @@ pub async fn wecom_list_apps(state: State<'_, Arc<AppState>>) -> Result<Vec<Weco
     Ok(wecom_views(&state).await)
 }
 
-#[tauri::command]
-pub async fn wecom_add_app(
-    state: State<'_, Arc<AppState>>,
+/// wecom_add_app 的主体，抽出来便于测试。
+pub async fn add_app(
+    state: &AppState,
     name: Option<String>,
     corpid: String,
     agentid: u32,
@@ -105,7 +105,12 @@ pub async fn wecom_add_app(
     if state.wecom_app_exists(&corpid, agentid).await {
         return Err(format!("corpid {corpid} 的应用 {agentid} 已添加"));
     }
-    let (token, agent) = verify_app(&state, &corpid, agentid, &secret).await?;
+    if let Some(n) = non_empty(name.clone()) {
+        if state.find_wecom_app(&n).await.is_some() {
+            return Err(format!("备注名「{n}」已存在"));
+        }
+    }
+    let (token, agent) = verify_app(state, &corpid, agentid, &secret).await?;
     let name = match non_empty(name) {
         Some(n) => n,
         None => {
@@ -113,18 +118,21 @@ pub async fn wecom_add_app(
             if n.is_empty() {
                 return Err("无法获取应用名称，请手动填写备注".into());
             }
+            if state.find_wecom_app(&n).await.is_some() {
+                return Err(format!("应用名称「{n}」已被使用，请手动填写备注"));
+            }
             n
         }
     };
     state
         .add_wecom_app(WecomApp { name, corpid, agentid, secret, token: Some(token), invalid: None })
         .await?;
-    Ok(WecomAddResult { apps: wecom_views(&state).await, notice: closed_notice(&agent) })
+    Ok(WecomAddResult { apps: wecom_views(state).await, notice: closed_notice(&agent) })
 }
 
-#[tauri::command]
-pub async fn wecom_update_app(
-    state: State<'_, Arc<AppState>>,
+/// wecom_update_app 的主体，抽出来便于测试。
+pub async fn update_app(
+    state: &AppState,
     name: String,
     new_name: Option<String>,
     corpid: Option<String>,
@@ -151,13 +159,36 @@ pub async fn wecom_update_app(
         app.corpid != existing.corpid || app.agentid != existing.agentid || app.secret != existing.secret;
     let mut notice = None;
     if creds_changed {
-        let (token, agent) = verify_app(&state, &app.corpid, app.agentid, &app.secret).await?;
+        let (token, agent) = verify_app(state, &app.corpid, app.agentid, &app.secret).await?;
         app.token = Some(token);
         app.invalid = None;
         notice = closed_notice(&agent);
     }
     state.replace_wecom_app(&name, app).await?;
-    Ok(WecomAddResult { apps: wecom_views(&state).await, notice })
+    Ok(WecomAddResult { apps: wecom_views(state).await, notice })
+}
+
+#[tauri::command]
+pub async fn wecom_add_app(
+    state: State<'_, Arc<AppState>>,
+    name: Option<String>,
+    corpid: String,
+    agentid: u32,
+    secret: String,
+) -> Result<WecomAddResult, String> {
+    add_app(&state, name, corpid, agentid, secret).await
+}
+
+#[tauri::command]
+pub async fn wecom_update_app(
+    state: State<'_, Arc<AppState>>,
+    name: String,
+    new_name: Option<String>,
+    corpid: Option<String>,
+    agentid: Option<u32>,
+    secret: Option<String>,
+) -> Result<WecomAddResult, String> {
+    update_app(&state, name, new_name, corpid, agentid, secret).await
 }
 
 #[tauri::command]
@@ -284,5 +315,78 @@ mod tests {
         assert!(v[0].is_default);
         assert_eq!(v[0].invalid.as_deref(), Some("x"));
         assert!(!serde_json::to_string(&v).unwrap().contains("hidden"));
+    }
+
+    fn mock_agent(name: &str) -> Mock {
+        Mock::given(method("GET"))
+            .and(path("/cgi-bin/agent/get"))
+            .respond_with(ok_json(serde_json::json!({"errcode": 0, "agentid": 1000002, "name": name, "close": 0})))
+    }
+
+    fn mock_token(token: &str) -> Mock {
+        Mock::given(method("GET"))
+            .and(path("/cgi-bin/gettoken"))
+            .respond_with(ok_json(serde_json::json!({"errcode": 0, "access_token": token, "expires_in": 7200})))
+    }
+
+    fn plain_app(name: &str, corpid: &str, agentid: u32) -> WecomApp {
+        WecomApp {
+            name: name.into(),
+            corpid: corpid.into(),
+            agentid,
+            secret: "s".into(),
+            token: None,
+            invalid: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn add_app_saves_with_agent_name_and_cached_token() {
+        let server = MockServer::start().await;
+        mock_token("tok").expect(1).mount(&server).await;
+        mock_agent("运维告警").expect(1).mount(&server).await;
+        let (_d, s) = state(&server.uri()).await;
+
+        let r = add_app(&s, None, "ww1".into(), 1000002, "sec".into()).await.unwrap();
+        assert!(r.notice.is_none());
+        let saved = s.find_wecom_app("运维告警").await.expect("saved under agent name");
+        assert_eq!(saved.token.unwrap().access_token, "tok");
+        assert!(saved.invalid.is_none());
+        assert_eq!(s.store.load_wecom_apps().len(), 1);
+
+        let e = add_app(&s, None, "ww1".into(), 1000002, "sec".into()).await.unwrap_err();
+        assert!(e.contains("已添加"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn add_app_rejects_duplicate_name_before_network() {
+        let server = MockServer::start().await;
+        mock_token("tok").expect(0).mount(&server).await;
+        let (_d, s) = state(&server.uri()).await;
+        s.add_wecom_app(plain_app("a", "ww1", 1)).await.unwrap();
+
+        let e = add_app(&s, Some("a".into()), "ww9".into(), 9, "s".into()).await.unwrap_err();
+        assert!(e.contains("备注名"), "{e}");
+    }
+
+    #[tokio::test]
+    async fn update_app_reverifies_and_clears_invalid_only_when_creds_change() {
+        let server = MockServer::start().await;
+        mock_token("fresh").expect(1).mount(&server).await;
+        mock_agent("运维告警").mount(&server).await;
+        let (_d, s) = state(&server.uri()).await;
+        s.add_wecom_app(plain_app("a", "ww1", 1)).await.unwrap();
+        s.mark_wecom_invalid("a", "x").await.unwrap();
+        assert!(s.find_wecom_app("a").await.unwrap().invalid.is_some());
+
+        update_app(&s, "a".into(), None, None, None, Some("newsec".into())).await.unwrap();
+        let a = s.find_wecom_app("a").await.unwrap();
+        assert!(a.invalid.is_none());
+        assert_eq!(a.token.unwrap().access_token, "fresh");
+        assert_eq!(a.secret, "newsec");
+
+        update_app(&s, "a".into(), Some("b".into()), None, None, None).await.unwrap();
+        assert!(s.find_wecom_app("b").await.is_some());
+        assert!(s.find_wecom_app("a").await.is_none());
     }
 }

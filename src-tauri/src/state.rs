@@ -54,6 +54,7 @@ impl AppState {
 
     /// 测试用：企业微信 API 指向 mock 服务，并强制直连（测试机可能配置了系统代理，
     /// 走代理访问 127.0.0.1 的 wiremock 会偶发连接失败）。
+    #[cfg(test)]
     pub fn new_with_wecom_base(store: Store, wecom_base_url: &str) -> Arc<Self> {
         let http = reqwest::Client::builder()
             .timeout(crate::ilink::client::SEND_TIMEOUT)
