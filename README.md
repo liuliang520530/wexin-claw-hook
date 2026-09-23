@@ -20,7 +20,7 @@ Tauri 2 + Rust 单 exe，不依赖 Node / Python 运行环境，Windows 10/11 �
 ## 功能
 
 - **多账号**：每扫一次码接入一个微信，各自独立凭据；同一账号重复扫码即刷新登录
-- **企业微信**：可添加多个企业微信自建应用（corpid / agentid / secret），`POST /wecom/send` 给成员或 `@all` 推文本；access_token 自动缓存与刷新，添加时实时校验凭据。**2022-06-20 之后新建的自建应用必须先在企业微信后台配置可信 IP**，见[企业微信通道](#企业微信通道)
+- **企业微信**：可添加多个企业微信自建应用（corpid\[企业ID\] / agentid / secret），`POST /wecom/send` 给成员或 `@all` 推文本；access\_token 自动缓存与刷新，添加时实时校验凭据。**2022-06-20 之后新建的自建应用必须先在企业微信后台配置可信 IP**，见[企业微信通道](#企业微信通道)
 - **本地 webhook**：默认监听 `9720` 端口，API key 鉴权，局域网内可直接调用
 - **图形界面**：扫码登录、发消息测试、调用日志（最近 500 条）、端口 / API key 设置
 - **单文件分发**：安装版 + 免安装 portable 版，GitHub Actions 自动构建发布
@@ -28,7 +28,7 @@ Tauri 2 + Rust 单 exe，不依赖 Node / Python 运行环境，Windows 10/11 �
 ## 实现方案
 
 - **协议**：腾讯官方 iLink Bot API（`ilinkai.weixin.qq.com`，参考官方包 `@tencent-weixin/openclaw-weixin`），非逆向。扫码 → 长轮询确认 → 拿到 `bot_token` 等凭据 → 用凭据调 `/ilink/bot/sendmessage` 发文本。
-- **企业微信**：官方服务端 API（`qyapi.weixin.qq.com`），只用三个接口：`gettoken` 换 access_token（按应用缓存、有效期 2 小时、到期前 5 分钟自动刷新、被提前作废时自动重取一次）→ `message/send` 发文本；添加应用时另调 `agent/get` 校验 agentid 并取应用名。不需要扫码，不接收回调。
+- **企业微信**：官方服务端 API（`qyapi.weixin.qq.com`），只用三个接口：`gettoken` 换 access\_token（按应用缓存、有效期 2 小时、到期前 5 分钟自动刷新、被提前作废时自动重取一次）→ `message/send` 发文本；添加应用时另调 `agent/get` 校验 agentid 并取应用名。不需要扫码，不接收回调。
 - **后端**（`src-tauri/src/`）：Rust + tokio + axum 提供 HTTP 服务；reqwest 调 iLink 接口；凭据 / 配置 / 日志以 JSON 持久化在本地。
 - **前端**：Svelte 5 + SvelteKit（静态适配）+ Tailwind CSS 4，通过 Tauri command 与后端通信，负责扫码、账号管理、测试发送、日志与设置页。
 - **打包**：Tauri 2 bundle（NSIS 安装包 + portable exe），推 tag 自动构建发布。
@@ -45,7 +45,7 @@ Tauri 2 + Rust 单 exe，不依赖 Node / Python 运行环境，Windows 10/11 �
 ## 使用
 
 1. **账号**：打开应用 → 账号页 → 获取二维码 → 用要接入的微信扫码并确认。每扫一次码接入一个账号，可接入多个；同一账号重复扫码即刷新登录。接入后请用该微信给机器人发一条任意消息（建立会话），否则微信会以 `ret=-2` 拒绝推送。
-2. **收件人 = 已接入的账号，一一对应**：每个账号由它自己的机器人发给自己。实测：用 A 的机器人发给 B，微信会返回成功（message_id）但 B 永远收不到，所以接口对未接入的 `to` 直接返回 `400 unknown_recipient`。收件人 ID 是 iLink 用户 ID（形如 `o9cq8…@im.wechat`，账号页可复制），不是微信号/wxid。「发消息」页选一个账号即可给它发。
+2. **收件人 = 已接入的账号，一一对应**：每个账号由它自己的机器人发给自己。实测：用 A 的机器人发给 B，微信会返回成功（message\_id）但 B 永远收不到，所以接口对未接入的 `to` 直接返回 `400 unknown_recipient`。收件人 ID 是 iLink 用户 ID（形如 `o9cq8…@im.wechat`，账号页可复制），不是微信号/wxid。「发消息」页选一个账号即可给它发。
 3. **企业微信（可选）**：账号页切到「企业微信」Tab，添加自建应用的 corpid / agentid / secret，保存时会实时验证。前提条件（尤其是新建应用必须配置的可信 IP）、取凭据的位置、收件人规则见下方[企业微信通道](#企业微信通道)。
 4. **设置**：查看/复制 API key，按需改端口（默认 9720）。
 5. **调用**：
@@ -73,7 +73,7 @@ curl -X POST http://<本机IP>:9720/wecom/send \
 
 ### 使用条件：企业可信 IP
 
-企业微信官方规定（开发文档「开发前必读 → 可信IP」）：**2022 年 6 月 20 日 20 点之后新创建的自建应用，必须在管理后台配置「企业可信IP」，只有名单内的 IP 才能调用接口**——获取 access_token 和发消息都在内。在此之前创建的旧应用，应用详情页的「企业可信IP」默认显示「未开启」，可以不配，直接用。
+企业微信官方规定（开发文档「开发前必读 → 可信IP」）：**2022 年 6 月 20 日 20 点之后新创建的自建应用，必须在管理后台配置「企业可信IP」，只有名单内的 IP 才能调用接口**——获取 access\_token 和发消息都在内。在此之前创建的旧应用，应用详情页的「企业可信IP」默认显示「未开启」，可以不配，直接用。
 
 本工具跑在你自己的电脑上，企业微信看到的是这台电脑的**公网出口 IP**。所以：
 
@@ -97,35 +97,39 @@ curl -X POST http://<本机IP>:9720/wecom/send \
 - `to` 为成员 **UserID**（管理后台 → 通讯录 → 点开成员 → 「账号」），多个用 `|` 分隔，最多 1000 个；`@all` 表示该应用可见范围内的全部成员；省略 `to` 即 `@all`。不支持部门、标签。
 - 频率限制（企业微信侧）：每个应用对同一成员不超过 30 次/分钟、1000 次/小时，超出部分企业微信会静默丢弃，不报错。
 - 文本最长 2048 字节，超出由企业微信截断。
-- access_token 由本工具按应用缓存在 `wecom_apps.json` 里并自动续期，调用方不用管。secret / corpid 填错、secret 被重置或应用被删时，该应用会被标为「凭据无效」，账号页显示原因，`/wecom/send` 返回 503 `invalid_credentials`；在账号页「编辑凭据」填入正确值即可恢复。
+- access\_token 由本工具按应用缓存在 `wecom_apps.json` 里并自动续期，调用方不用管。secret / corpid 填错、secret 被重置或应用被删时，该应用会被标为「凭据无效」，账号页显示原因，`/wecom/send` 返回 503 `invalid_credentials`；在账号页「编辑凭据」填入正确值即可恢复。
 
 ## 接口
 
-| 方法 | 路径 | 说明 |
-|---|---|---|
-| `POST /send` | `{"text": "...", "to": "可选"}` | 发文本消息，需鉴权。`to` 必须是已接入账号的 ID（用该账号自己的凭据发给自己）；缺省 = 默认账号 |
-| `POST /wecom/send` | `{"text": "...", "to": "可选", "app": "可选"}` | 发企业微信文本，需鉴权。`to` = 成员 UserID（`\|` 分隔）或 `@all`，缺省 `@all`；`app` = 应用备注名，缺省默认应用。成功返回 `{"ok":true,"app","to","msgid","invalid_users":[...]}`，`invalid_users` 为不在可见范围的收件人 |
-| `GET /health` | — | `{"ok":true,"logged_in":bool,"accounts":n,"wecom_apps":n,"version":"..."}`，不鉴权 |
 
-| HTTP | code | 含义 |
-|---|---|---|
-| 200 | — | 已发送 |
-| 400 | `bad_request` | 缺 `text`、JSON 非法或 `to` 格式错误 |
-| 400 | `unknown_recipient` | `to` 不是已接入账号的 ID；只能发给已扫码接入的账号 |
-| 401 | `unauthorized` | API key 错误 |
-| 429 | `rate_limited` | 微信侧拒绝（ret=-2）：首次给某人推送前，需对方先在微信里给机器人发过一条消息建立会话；否则是频率限制（约 7 条/5 分钟），稍后重试；企微：每应用对同一成员 30 次/分钟、1000 次/小时 |
-| 503 | `not_logged_in` / `token_expired` | 未登录或登录失效，回应用重新扫码 |
-| 502 | `upstream_error` | 微信服务端或网络错误，body 里有原始信息 |
-| 400 | `unknown_app` | 企微：`app` 不是已添加应用的备注名 |
-| 400 | `unknown_recipient` | 企微：收件人全部无效或不在应用可见范围（81013 等） |
-| 503 | `not_configured` | 企微：尚未添加任何应用 |
-| 503 | `invalid_credentials` | 企微：corpid / agentid / secret 无效，账号页会显示原因 |
+| 方法                 | 路径                                         | 说明                                                                                                                                                                  |
+| ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /send`       | `{"text": "...", "to": "可选"}`              | 发文本消息，需鉴权。`to` 必须是已接入账号的 ID（用该账号自己的凭据发给自己）；缺省 = 默认账号                                                                                                                |
+| `POST /wecom/send` | `{"text": "...", "to": "可选", "app": "可选"}` | 发企业微信文本，需鉴权。`to` = 成员 UserID（`|` 分隔）或 `@all`，缺省 `@all`；`app` = 应用备注名，缺省默认应用。成功返回 `{"ok":true,"app","to","msgid","invalid_users":[...]}`，`invalid_users` 为不在可见范围的收件人 |
+| `GET /health`      | —                                          | `{"ok":true,"logged_in":bool,"accounts":n,"wecom_apps":n,"version":"..."}`，不鉴权                                                                                      |
+
+
+
+| HTTP | code                              | 含义                                                                                                   |
+| ---- | --------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| 200  | —                                 | 已发送                                                                                                  |
+| 400  | `bad_request`                     | 缺 `text`、JSON 非法或 `to` 格式错误                                                                          |
+| 400  | `unknown_recipient`               | `to` 不是已接入账号的 ID；只能发给已扫码接入的账号                                                                        |
+| 401  | `unauthorized`                    | API key 错误                                                                                           |
+| 429  | `rate_limited`                    | 微信侧拒绝（ret=-2）：首次给某人推送前，需对方先在微信里给机器人发过一条消息建立会话；否则是频率限制（约 7 条/5 分钟），稍后重试；企微：每应用对同一成员 30 次/分钟、1000 次/小时 |
+| 503  | `not_logged_in` / `token_expired` | 未登录或登录失效，回应用重新扫码                                                                                     |
+| 502  | `upstream_error`                  | 微信服务端或网络错误，body 里有原始信息                                                                               |
+| 400  | `unknown_app`                     | 企微：`app` 不是已添加应用的备注名                                                                                 |
+| 400  | `unknown_recipient`               | 企微：收件人全部无效或不在应用可见范围（81013 等）                                                                         |
+| 503  | `not_configured`                  | 企微：尚未添加任何应用                                                                                          |
+| 503  | `invalid_credentials`             | 企微：corpid / agentid / secret 无效，账号页会显示原因                                                             |
+
 
 失败响应统一为 `{"ok":false,"code":"...","error":"..."}`。
 
 ## 数据目录
 
-`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`accounts.json`（各账号的登录凭据，明文，请勿外传；v1 的 `credentials.json` 首次启动时自动迁移）、`config.json`（端口/API key/默认账号）、`wecom_apps.json`（企微应用的 corpid / agentid / secret 与缓存的 access_token，明文）、`logs.json`（最近 500 条）。
+`%APPDATA%\com.liuli.weixin-clawbot-webhook\`：`accounts.json`（各账号的登录凭据，明文，请勿外传；v1 的 `credentials.json` 首次启动时自动迁移）、`config.json`（端口/API key/默认账号）、`wecom_apps.json`（企微应用的 corpid / agentid / secret 与缓存的 access\_token，明文）、`logs.json`（最近 500 条）。
 
 ## 开发
 
@@ -143,6 +147,7 @@ cd src-tauri && cargo test   # 后端测试
 - 只做「主动发送」，不接收消息；只支持文本。
 - 每个账号接入后，需用该微信给机器人发过一条消息激活，否则推送返回 `ret=-2`；会话可能过期，过期后再发一条即可。
 - 不支持跨账号发送（A 的机器人发给 B）：微信侧返回成功但对方收不到，接口直接拒绝。
-- bot_token 有效期数天到数周，失效后 `/send` 返回 503 `token_expired`，重新扫码即可。
+- bot\_token 有效期数天到数周，失效后 `/send` 返回 503 `token_expired`，重新扫码即可。
 - 协议为腾讯官方 iLink Bot API（`ilinkai.weixin.qq.com`），非逆向；协议演进可能导致失效。
 - 企业微信：2022-06-20 之后新建的自建应用必须配置可信 IP，本机公网 IP 变了就要去后台改，详见[企业微信通道](#企业微信通道)；只支持成员 UserID 与 `@all`，不支持部门 / 标签；部分收件人不在可见范围时仍会发给其余人，并在 `invalid_users` 里返回。
+
